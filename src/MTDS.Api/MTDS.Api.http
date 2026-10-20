@@ -1,0 +1,13 @@
+@MTDS.Api_HostAddress = http://localhost:5067
+
+
+###
+POST http://localhost:5067/api/v1/telemetry
+Content-Type: application/json
+
+{
+    "busId": "A154AA150",
+    "lat": 55.4311,
+    "lon": 37.5458,
+    "speedKmh": 45
+}
