@@ -1,20 +1,9 @@
-using MTDS.Api.Features.TransportLayer;
+using MTDS.Api.Features.GetRoute;
 using MTDS.Api.Features.Errors;
 using Microsoft.AspNetCore.Mvc;
 using MediatR;
 
-namespace MTDS.Api.Features.TransportLayer;
-
-
-public class GetRouteQuery : IRequest<TransportLayerResponse?>
-{
-    public string PathId { get; set; } = string.Empty;
-}
-
-public class GetActiveRoutesQuery : IRequest<List<TransportLayerSummary>>
-{
-
-}
+namespace MTDS.Api.Features.GetRoute;
 
 
 [ApiController]
@@ -31,15 +20,15 @@ class TransportLayerEndpoint : ControllerBase
 
 
     [HttpGet]
-    public async Task<IActionResult> GetTransportLayerActive()
+    public async Task<IActionResult> GetRouteActive()
     {
-        var query = new GetActiveRoutesQuery();
+        var query = new GetActiveRouteQuery();
         var result = await _mediator.Send(query);
         return Ok(result);
     }
 
     [HttpGet("{id}")]
-    public async Task<IActionResult> GetTransportLayerById(string id)
+    public async Task<IActionResult> GetRouteById(string id)
     {
         var query = new GetRouteQuery { PathId = id };
         var result = await _mediator.Send(query);
