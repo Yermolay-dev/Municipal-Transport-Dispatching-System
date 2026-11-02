@@ -5,16 +5,19 @@ using MTDS.Api.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using MTDS.Api.Features.Errors;
 using MTDS.Api.Infrastructure.Entities;
+using MTDS.Api.Infrastructure.Jwt;
 
 namespace MTDS.Api.Features.Auth.Register;
 
 public class RegisterHandler : IRequestHandler<RegisterQuery, RegisterResponse?>
 {
     private readonly AppDbContext _db;
+    private readonly JwtProvider _jwtProvider;
 
-    public RegisterHandler(AppDbContext db)
+    public RegisterHandler(AppDbContext db, JwtProvider jwtProvider)
     {
         _db = db;
+        _jwtProvider = jwtProvider;
     }
 
     public async Task<RegisterResponse?> Handle(RegisterQuery req, CancellationToken cancel)
@@ -24,7 +27,7 @@ public class RegisterHandler : IRequestHandler<RegisterQuery, RegisterResponse?>
         if (user != null)
             return null;
 
-        _db.Users.Add(new User
+        var newUser = new User
         {
             Id = Guid.CreateVersion7(),
             Role = req.Role ?? "Passenger",
@@ -35,15 +38,17 @@ public class RegisterHandler : IRequestHandler<RegisterQuery, RegisterResponse?>
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
             PhoneNumber = req.PhoneNumber,
             DriverLicenseNumber = req.DriverLicenseNumber
-        });
+        };
+        _db.Users.Add(newUser);
 
         await _db.SaveChangesAsync(cancel);
 
+        string jwtToken = _jwtProvider.GenerateToken(newUser);
         return new RegisterResponse
         {
             Status = "Successfully",
             Message = "Пользователь успешно зарегестрирован",
-            Token = ""
+            Token = jwtToken
         };
     }
 }
