@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using MTDS.Api.Infrastructure.Communication;
 using MTDS.Api.Infrastructure.Data;
 using MTDS.Api.Infrastructure.Jwt;
 
@@ -14,7 +15,6 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblies(typeof(Program).Assembly));
-builder.Services.AddScoped<IJwtProvider, JwtProvider>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
 {
     options.TokenValidationParameters = new TokenValidationParameters
@@ -28,7 +28,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:SecretKey"]!))
     };
 });
+builder.Services.AddScoped<IJwtProvider, JwtProvider>();
+builder.Services.AddScoped<ITransportCommunicator, MockTransportCommunicator>();
 builder.Services.AddAuthorization();
+
 
 var app = builder.Build();
 

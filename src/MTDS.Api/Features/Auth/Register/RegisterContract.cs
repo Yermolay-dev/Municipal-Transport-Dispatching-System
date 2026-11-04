@@ -14,10 +14,6 @@ public class RegisterQuery : IRequest<RegisterResponse?>
     public string? DriverLicenseNumber { get; set; } = string.Empty;
 }
 
-public class LoginQuery : IRequest<LoginResponse>
-{
-
-}
 
 public class RegisterRequest
 {
