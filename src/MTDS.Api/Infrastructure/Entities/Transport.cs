@@ -1,6 +1,6 @@
 namespace MTDS.Api.Infrastructure.Entities;
 
-public class Transport
+public class TransportEntity
 {
     public int Id { get; set; }
     public string NumberPlate { get; set; } = string.Empty;

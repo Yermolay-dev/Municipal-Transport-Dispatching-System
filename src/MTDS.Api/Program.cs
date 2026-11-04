@@ -3,9 +3,9 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using MTDS.Api.Infrastructure.Communication;
+using MTDS.Api.Infrastructure.Configuration;
 using MTDS.Api.Infrastructure.Data;
 using MTDS.Api.Infrastructure.Jwt;
-
 var builder = WebApplication.CreateBuilder(args);
 
 
@@ -30,6 +30,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
 });
 builder.Services.AddScoped<IJwtProvider, JwtProvider>();
 builder.Services.AddScoped<ITransportCommunicator, MockTransportCommunicator>();
+builder.Services.Configure<TransportSettings>(builder.Configuration.GetSection("TransportSettings"));
 builder.Services.AddAuthorization();
 
 
