@@ -17,7 +17,7 @@ public class LoginEndpoint : ControllerBase
     }
 
     [HttpPost]
-    public IActionResult Login([FromBody] LoginRequest req)
+    public async Task<IActionResult> Login([FromBody] LoginRequest req)
     {
         var query = new LoginQuery
         {
@@ -25,7 +25,7 @@ public class LoginEndpoint : ControllerBase
             Password = req.Password
         };
 
-        var result = _mediator.Send(query);
+        var result = await _mediator.Send(query);
         if (result == null)
             return ErrorHandler.ForCode(401);
 

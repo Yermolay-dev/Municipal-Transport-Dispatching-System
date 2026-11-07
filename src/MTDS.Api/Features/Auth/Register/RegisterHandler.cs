@@ -23,9 +23,14 @@ public class RegisterHandler : IRequestHandler<RegisterQuery, RegisterResponse?>
     public async Task<RegisterResponse?> Handle(RegisterQuery req, CancellationToken cancel)
     {
         var user = await _db.Users.FirstOrDefaultAsync(r => r.Email == req.Email, cancel);
-
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.WriteLine("Request received!");
+        Console.ResetColor();
         if (user != null)
             return null;
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.WriteLine($"Request send to handler! email: {req.Email}, password: {req.Password}, name: {req.Name}");
+        Console.ResetColor();
 
         var newUser = new User
         {

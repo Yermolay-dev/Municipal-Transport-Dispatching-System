@@ -17,7 +17,7 @@ public class RegisterEndpoint : ControllerBase
     }
 
     [HttpPost]
-    public IActionResult Register([FromBody] RegisterRequest req)
+    public async Task<IActionResult> Register([FromBody] RegisterRequest req)
     {
         var query = new RegisterQuery
         {
@@ -31,7 +31,10 @@ public class RegisterEndpoint : ControllerBase
             DriverLicenseNumber = req.DriverLicenseNumber,
 
         };
-        var result = _mediator.Send(query);
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.WriteLine("Request send to handler!");
+        Console.ResetColor();
+        var result = await _mediator.Send(query);
         if (result == null)
             return ErrorHandler.ForCode(400);
         return StatusCode(201, result);

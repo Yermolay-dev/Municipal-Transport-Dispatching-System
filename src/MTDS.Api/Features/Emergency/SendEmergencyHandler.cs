@@ -23,12 +23,12 @@ public class SendEmergencyHandler : IRequestHandler<SendEmergencyCommand, bool>
     public async Task<bool> Handle(SendEmergencyCommand command, CancellationToken cancel)
     {
         var transport = await _db.Transports.FindAsync(new object[] { command.TransportId }, cancel);
-        if (transport == null)
-            return false;
 
 
         bool isDelivered = await _communicator.SendCommandToTransportAsync(command.TransportId, command.ActionType, cancel);
         if (!isDelivered)
+            return false;
+        if (transport == null)
             return false;
 
         switch (command.ActionType)

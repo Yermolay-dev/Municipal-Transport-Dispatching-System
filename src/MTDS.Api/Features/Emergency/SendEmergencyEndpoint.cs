@@ -10,7 +10,7 @@ namespace MTDS.Api.Features.Emergency;
 
 [ApiController]
 [Route("api/v1/emergency")]
-[Authorize(Roles = "Dispatcher, Admin")]
+[Authorize(Roles = "Admin")]
 public class SendEmergencyEndpoint : ControllerBase
 {
     private readonly IMediator _mediator;

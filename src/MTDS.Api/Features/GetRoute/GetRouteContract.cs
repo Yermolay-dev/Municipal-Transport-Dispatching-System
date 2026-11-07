@@ -40,7 +40,7 @@ public class TransportPath
 public class StopStruct
 {
     public string StopName { get; set; } = string.Empty;
-    public decimal Lat { get; set; }
-    public decimal Lon { get; set; }
+    public double Lat { get; set; }
+    public double Lon { get; set; }
     public DateTime ArrivalTime { get; set; } = DateTime.UtcNow;
 }

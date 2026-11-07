@@ -26,7 +26,7 @@ public class LoginHandler : IRequestHandler<LoginQuery, LoginResponse?>
         if (user == null)
             return null;
 
-        bool isPasswordCorrect = BCrypt.Net.BCrypt.EnhancedVerify(request.Password, user.PasswordHash);
+        bool isPasswordCorrect = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
 
         if (!isPasswordCorrect)
             return null;

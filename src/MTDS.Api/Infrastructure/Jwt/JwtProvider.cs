@@ -22,7 +22,7 @@ public class JwtProvider : IJwtProvider
 
     public string GenerateToken(User user)
     {
-        var secretKey = _config["Jwt: SecretKey"]!;
+        var secretKey = _config["Jwt:SecretKey"]!;
         var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
 
         var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);

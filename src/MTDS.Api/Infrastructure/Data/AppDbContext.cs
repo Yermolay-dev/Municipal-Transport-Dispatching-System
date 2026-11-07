@@ -9,7 +9,7 @@ public class AppDbContext : DbContext
 
 
     public DbSet<User> Users { get; set; }
-    public DbSet<Transport> Transports { get; set; }
+    public DbSet<TransportEntity> Transports { get; set; }
     public DbSet<TransportAssigment> TransportAssigments { get; set; }
     public DbSet<AuditLog> AuditLogs { get; set; }
     public DbSet<RouteEntity> Routes { get; set; }

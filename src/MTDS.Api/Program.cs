@@ -12,10 +12,15 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+// builder.Services.AddDbContext<AppDbContext>(options =>
+//     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.AddDbContextFactory<AppDbContext>(options =>
+    options.UseNpgsql(connectionString));
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblies(typeof(Program).Assembly));
+builder.Services.AddScoped<IJwtProvider, JwtProvider>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
 {
     options.TokenValidationParameters = new TokenValidationParameters
@@ -29,8 +34,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:SecretKey"]!))
     };
 });
-builder.Services.AddScoped<IJwtProvider, JwtProvider>();
-builder.Services.AddScoped<ITransportCommunicator, MockTransportCommunicator>();
+builder.Services.AddScoped<ITransportCommunicator, MqttTransportCommunicator>();
 builder.Services.Configure<TransportSettings>(builder.Configuration.GetSection("TransportSettings"));
 builder.Services.AddAuthorization();
 builder.Services.AddStackExchangeRedisCache(options =>
@@ -39,6 +43,7 @@ builder.Services.AddStackExchangeRedisCache(options =>
     options.InstanceName = "MTDS_";
 });
 builder.Services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect("localhost:6379"));
+builder.Services.AddScoped<JwtProvider>();
 
 
 var app = builder.Build();
@@ -48,9 +53,8 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-app.UseAuthentication();
-app.UseAuthorization();
 app.UseHttpsRedirection();
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.Run();

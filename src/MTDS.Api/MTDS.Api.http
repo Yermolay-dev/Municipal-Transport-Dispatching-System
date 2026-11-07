@@ -1,11 +1,8 @@
 @MTDS.Api_HostAddress = http://localhost:5067
-
-
-###
-POST http://localhost:5067/api/v1/emergency/stop
+POST http://localhost:5067/api/v1/auth/login
 Content-Type: application/json
 
 {
-    DispatcherId: "3354j36",
-    TransportId: "3443-jjdjt6-3332"
+    "Email": "bob@mtds.ru",
+    "Password": "1234567890"
 }
