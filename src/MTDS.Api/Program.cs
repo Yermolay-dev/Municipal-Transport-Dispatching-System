@@ -32,6 +32,11 @@ builder.Services.AddScoped<IJwtProvider, JwtProvider>();
 builder.Services.AddScoped<ITransportCommunicator, MockTransportCommunicator>();
 builder.Services.Configure<TransportSettings>(builder.Configuration.GetSection("TransportSettings"));
 builder.Services.AddAuthorization();
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration = "localhost:6379";
+    options.InstanceName = "MTDS_";
+});
 
 
 var app = builder.Build();
