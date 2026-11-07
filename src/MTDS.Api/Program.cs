@@ -6,6 +6,7 @@ using MTDS.Api.Infrastructure.Communication;
 using MTDS.Api.Infrastructure.Configuration;
 using MTDS.Api.Infrastructure.Data;
 using MTDS.Api.Infrastructure.Jwt;
+using StackExchange.Redis;
 var builder = WebApplication.CreateBuilder(args);
 
 
@@ -37,6 +38,7 @@ builder.Services.AddStackExchangeRedisCache(options =>
     options.Configuration = "localhost:6379";
     options.InstanceName = "MTDS_";
 });
+builder.Services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect("localhost:6379"));
 
 
 var app = builder.Build();
