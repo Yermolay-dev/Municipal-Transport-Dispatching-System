@@ -12,6 +12,6 @@ public class User
     public string PasswordHash { get; set; } = string.Empty;
     public string? PhoneNumber { get; set; } = string.Empty;
     public string? DriverLicenseNumber { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime LastEntranceAt { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; set; }
+    public DateTime LastEntranceAt { get; set; }
 }

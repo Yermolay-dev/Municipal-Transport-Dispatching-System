@@ -72,6 +72,15 @@ namespace MTDS.Api.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Routes");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            PathNumber = "49a",
+                            RouteLineJson = "[[55.4311, 37.5458], [55.4280, 37.5490], [55.4200, 37.5500]]",
+                            TransportType = "bus"
+                        });
                 });
 
             modelBuilder.Entity("MTDS.Api.Infrastructure.Entities.RouteStop", b =>
@@ -101,6 +110,32 @@ namespace MTDS.Api.Migrations
                     b.HasIndex("StopId");
 
                     b.ToTable("RouteStops");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            MinutesFromStart = 0,
+                            RouteId = 1,
+                            StopId = 1,
+                            StopOrder = 1
+                        },
+                        new
+                        {
+                            Id = 2,
+                            MinutesFromStart = 5,
+                            RouteId = 1,
+                            StopId = 2,
+                            StopOrder = 2
+                        },
+                        new
+                        {
+                            Id = 3,
+                            MinutesFromStart = 17,
+                            RouteId = 1,
+                            StopId = 3,
+                            StopOrder = 3
+                        });
                 });
 
             modelBuilder.Entity("MTDS.Api.Infrastructure.Entities.Stop", b =>
@@ -124,6 +159,29 @@ namespace MTDS.Api.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Stops");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Lat = 55.431100000000001,
+                            Lon = 37.5458,
+                            Name = "Автостанция Подольск"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Lat = 55.427999999999997,
+                            Lon = 37.548999999999999,
+                            Name = "Площадь Ленина"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Lat = 55.420000000000002,
+                            Lon = 37.549999999999997,
+                            Name = "Рынок"
+                        });
                 });
 
             modelBuilder.Entity("MTDS.Api.Infrastructure.Entities.TransportAssigment", b =>
@@ -185,6 +243,16 @@ namespace MTDS.Api.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Transports");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 105,
+                            Capacity = 50,
+                            NumberPlate = "A154AA150",
+                            Status = "in_garage",
+                            Type = "bus"
+                        });
                 });
 
             modelBuilder.Entity("MTDS.Api.Infrastructure.Entities.User", b =>
@@ -229,6 +297,22 @@ namespace MTDS.Api.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Users");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("11111111-1111-1111-1111-111111111111"),
+                            CreatedAt = new DateTime(2026, 11, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            DriverLicenseNumber = "",
+                            Email = "admin@mtds.ru",
+                            LastEntranceAt = new DateTime(2026, 11, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Name = "Ермолай",
+                            PasswordHash = "$2a$11$E9P.h40f51W37E2U22C.7uC4.vFv2.R/f4PjC2j78K1hG8E/w0C7a",
+                            PhoneNumber = "",
+                            PhotoUrl = "",
+                            Role = "Dispatcher",
+                            SurName = "Лукинов"
+                        });
                 });
 
             modelBuilder.Entity("MTDS.Api.Infrastructure.Entities.RouteStop", b =>
