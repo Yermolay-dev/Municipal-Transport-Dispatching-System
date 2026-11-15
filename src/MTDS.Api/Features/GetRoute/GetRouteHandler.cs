@@ -20,7 +20,7 @@ public class GetRouteHandler : IRequestHandler<GetRouteQuery, GetRouteResponse?>
 
     public async Task<GetRouteResponse?> Handle(GetRouteQuery request, CancellationToken cancellationToken)
     {
-        var route = await _db.Routes.Include(r => r.RouteStops).ThenInclude(rs => rs.Stop).FirstOrDefaultAsync(r => r.PathNumber == request.PathId, cancellationToken);
+        var route = await _db.Routes.Include(r => r.RouteStops).ThenInclude(rs => rs.Stop).FirstOrDefaultAsync(r => r.PathNumber.ToLower() == request.PathId.ToLower(), cancellationToken);
 
         if (route == null)
             return null;

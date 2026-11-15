@@ -24,12 +24,23 @@ public class LoginHandler : IRequestHandler<LoginQuery, LoginResponse?>
     {
         var user = await _db.Users.FirstOrDefaultAsync(r => r.Email == request.Email, cancel);
         if (user == null)
+        {
+            Console.WriteLine("Пользователя такого нету в БД");
             return null;
+
+        }
+
+        Console.WriteLine($"Пользователь имеет пароль {request.Password}, login: {request.Email}, Length: {user.PasswordHash.Length}");
+        Console.WriteLine($"Length.Trim:  {user.PasswordHash.Trim().Length}");
 
         bool isPasswordCorrect = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
 
         if (!isPasswordCorrect)
+        {
+            Console.WriteLine("Пользователь имеет неверный пароль или хэш не совпал");
             return null;
+
+        }
 
         string jwtToken = _jwtProvider.GenerateToken(user);
         return new LoginResponse

@@ -4,9 +4,9 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 namespace MTDS.Api.Features.GetPark;
 
+[Authorize(Roles = "Admin, Dispatcher")]
 [ApiController]
 [Route("api/v1/park")]
-[Authorize(Roles = "Admin, Dispatcher")]
 public class GetParkEndpoint : ControllerBase
 {
     private readonly IMediator _mediator;

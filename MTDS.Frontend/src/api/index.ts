@@ -1,7 +1,6 @@
 import axios from 'axios'
 import router from '../router'
 
-// Создаем инстанс с базовым URL бэкенда
 const apiClient = axios.create({
     baseURL: 'http://localhost:5067/api/v1',
     headers: {
@@ -9,30 +8,26 @@ const apiClient = axios.create({
     },
 })
 
-// Request Interceptor: внедряем Bearer-токен в каждый исходящий запрос
-apiClient.interceptors.request.use(
-    (config) => {
-        const token = localStorage.getItem('token')
-        if (token && config.headers) {
-            config.headers.Authorization = `Bearer ${token}`
-        }
-        return config
-    },
-    (error) => {
-        return Promise.reject(error)
+// Request Interceptor: логируем отправляемый заголовок
+apiClient.interceptors.request.use((config) => {
+    const token = localStorage.getItem('token')
+    if (token && config.headers) {
+        config.headers.Authorization = `Bearer ${token}`
+        console.log(`[HTTP REQ] ${config.method?.toUpperCase()} ${config.url} -> Bearer ${token.substring(0, 10)}...`)
+    } else {
+        console.warn(`[HTTP REQ] ${config.method?.toUpperCase()} ${config.url} -> БЕЗ ТОКЕНА!`)
     }
-)
+    return config
+})
 
-// Response Interceptor: перехват 401 Unauthorized
+// Response Interceptor
 apiClient.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response && error.response.status === 401) {
-            // Сбрасываем сессию
+            console.warn('[HTTP RES 401] Запрос отклонен сервером (Unauthorized). Сброс сессии.')
             localStorage.removeItem('token')
             localStorage.removeItem('role')
-
-            // Редирект на экран авторизации, если мы еще не там
             if (router.currentRoute.value.path !== '/login') {
                 router.push('/login')
             }

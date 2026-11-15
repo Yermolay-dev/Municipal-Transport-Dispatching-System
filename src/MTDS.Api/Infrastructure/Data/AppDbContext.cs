@@ -19,7 +19,8 @@ public class AppDbContext : DbContext
             Name = "Ермолай",
             SurName = "Лукинов",
             Email = "admin@mtds.ru",
-            PasswordHash = "$2a$11$E9P.h40f51W37E2U22C.7uC4.vFv2.R/f4PjC2j78K1hG8E/w0C7a",
+            PasswordHash = "$2a$11$LAsjsD6AhrIhEfhMWwzqWeGqvZ0NcW6JskpB/P3EF./zy/FuGp3sS",
+
             CreatedAt = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc),
             LastEntranceAt = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc)
         });

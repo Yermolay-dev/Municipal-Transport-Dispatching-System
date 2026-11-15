@@ -10,5 +10,5 @@ public class GetAuditLogsQuery : IRequest<GetAuditLogsResponse?>
 
 public class GetAuditLogsResponse
 {
-    public List<AuditLog> Logs = new();
+    public List<AuditLog> Logs { get; set; } = new();
 }

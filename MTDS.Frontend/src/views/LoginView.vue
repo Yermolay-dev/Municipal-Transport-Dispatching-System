@@ -21,9 +21,33 @@ const rules = {
   email: (v: string) => /.+@.+\..+/.test(v) || 'Введите корректный Email',
 }
 
+// Вспомогательная функция: извлечение роли диспетчера из JWT-токена ASP.NET Core
+const getRoleFromToken = (token: string): string => {
+  try {
+    const base64Url = token.split('.')[1]
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    )
+    const payload = JSON.parse(jsonPayload)
+
+    // В ASP.NET Core роль в клеймах лежит либо в 'role', либо по стандартному URI клейма
+    return (
+      payload.role ||
+      payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ||
+      'Dispatcher'
+    )
+  } catch {
+    return 'Dispatcher'
+  }
+}
+
 const handleLogin = async () => {
   if (!email.value || !password.value) {
-    errorMessage.value = 'Заполните все поля'
+    errorMessage.value = 'Заполните email и пароль'
     snackbar.value = true
     return
   }
@@ -31,26 +55,38 @@ const handleLogin = async () => {
   try {
     isLoading.value = true
 
-    // Отправляем запрос на авторизацию
-    const response = await apiClient.post<{ token: string; role: string }>('/auth/login', {
-      email: email.value,
+    // Отправляем строго email и password под LoginRequest твоего C# бэкенда
+    const response = await apiClient.post('/auth/login', {
+      email: email.value.trim(),
       password: password.value,
     })
 
-    const { token, role } = response.data
+    const data = response.data
 
-    // Сохраняем сессионные данные
+    // 1. Проверяем, успешен ли ответ (бэкенд возвращает Token или token)
+    const token = data.Token || data.token
+
+    if (!token || data.status === 'AUTH_REQUIRED') {
+      // Сервер вернул 200 OK, но пароль или email не подошли
+      errorMessage.value = data.title || data.message || 'Неверный email или пароль'
+      snackbar.value = true
+      return
+    }
+
+    // 2. Достаем роль диспетчера прямо из claims JWT-токена
+    const userRole = getRoleFromToken(token)
+
+    // 3. Сохраняем в localStorage
     localStorage.setItem('token', token)
-    localStorage.setItem('role', role)
+    localStorage.setItem('role', userRole)
 
-    // Переходим на оперативный пульт
+    console.log('[ОРБИТА] Успешный вход! Роль оператора:', userRole)
+
+    // 4. Переходим на главную (карту)
     await router.push('/')
   } catch (error: any) {
-    if (error.response && error.response.status === 401) {
-      errorMessage.value = 'Неверный логин или пароль'
-    } else {
-      errorMessage.value = 'Ошибка связи с сервером авторизации'
-    }
+    console.error('[ОРБИТА] Сбой сети или запроса:', error)
+    errorMessage.value = 'Ошибка связи с сервером (проверьте запуск API)'
     snackbar.value = true
   } finally {
     isLoading.value = false

@@ -10,6 +10,6 @@ public class GetParkQuery : IRequest<GetParkResponse?>
 
 public class GetParkResponse
 {
-    public List<TransportEntity> Park = new();
+    public List<TransportEntity> Park { get; set; } = new();
 }
 

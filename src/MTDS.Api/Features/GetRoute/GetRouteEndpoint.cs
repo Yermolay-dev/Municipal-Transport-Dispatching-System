@@ -8,7 +8,7 @@ namespace MTDS.Api.Features.GetRoute;
 
 [ApiController]
 [Route("api/v1/path/active")]
-class TransportLayerEndpoint : ControllerBase
+public class TransportLayerEndpoint : ControllerBase
 {
 
     private readonly IMediator _mediator;

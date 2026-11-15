@@ -1,22 +1,35 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
 const drawer = ref<boolean>(true)
+const devSnackbar = ref<boolean>(false)
+
+const userRole = ref<string>(localStorage.getItem('role') || 'Dispatcher')
 
 const dispatcher = ref({
   name: 'Алексеев Д. В.',
-  role: localStorage.getItem('role') || 'Диспетчер',
-  badge: 'Смена №2',
-  initials: 'ДА',
+  role: userRole.value === 'Admin' ? 'Администратор системы' : 'Оперативный диспетчер',
+  badge: userRole.value,
+  initials: userRole.value === 'Admin' ? 'АД' : 'ОД',
 })
 
-const menuItems = [
-  { to: '/', title: 'Карта маршрутов', icon: 'mdi-map-marker-path' },
-  { to: '/fleet', title: 'Управление парком', icon: 'mdi-bus-multiple' },
-  { to: '/audit', title: 'Журнал аудита', icon: 'mdi-clipboard-text-clock-outline' },
+// Список навигации с флагом доступа
+const rawMenuItems = [
+  { to: '/', title: 'Карта маршрутов', icon: 'mdi-map-marker-path', requiresAdmin: false },
+  { to: '/fleet', title: 'Управление парком', icon: 'mdi-bus-multiple', requiresAdmin: false },
+  { to: '/audit', title: 'Журнал аудита', icon: 'mdi-clipboard-text-clock-outline', requiresAdmin: true },
 ]
+
+// Фильтруем элементы меню на основе роли
+const visibleMenuItems = computed(() => {
+  return rawMenuItems.filter((item) => !item.requiresAdmin || userRole.value === 'Admin')
+})
+
+const showInDevNotice = () => {
+  devSnackbar.value = true
+}
 
 const handleLogout = () => {
   localStorage.removeItem('token')
@@ -28,13 +41,7 @@ const handleLogout = () => {
 <template>
   <div class="h-100 w-100">
     <!-- БОКОВОЕ МЕНЮ -->
-    <v-navigation-drawer
-      v-model="drawer"
-      app
-      permanent
-      width="260"
-      class="panel-drawer"
-    >
+    <v-navigation-drawer v-model="drawer" app permanent width="260" class="panel-drawer">
       <div class="brand-header px-4 py-3 d-flex align-center">
         <v-icon icon="mdi-radar" color="#00E676" size="24" class="mr-2" />
         <div class="d-flex flex-column">
@@ -47,9 +54,10 @@ const handleLogout = () => {
 
       <v-divider class="border-opacity-10 mb-2" />
 
+      <!-- Список маршрутов (Журнал аудита виден только Admin) -->
       <v-list density="compact" nav class="px-2">
         <v-list-item
-          v-for="item in menuItems"
+          v-for="item in visibleMenuItems"
           :key="item.to"
           :to="item.to"
           exact
@@ -68,8 +76,8 @@ const handleLogout = () => {
 
       <template #append>
         <div class="px-3 py-2 system-health-box mx-2 mb-2 d-flex align-center justify-space-between">
-          <span class="text-caption text-disabled">ТЕЛЕМЕТРИЯ:</span>
-          <span class="text-caption font-weight-bold status-normal">НОРМА</span>
+          <span class="text-caption text-disabled">ДОСТУП:</span>
+          <span class="text-caption font-weight-bold status-normal">{{ userRole.toUpperCase() }}</span>
         </div>
       </template>
     </v-navigation-drawer>
@@ -87,7 +95,8 @@ const handleLogout = () => {
 
       <v-spacer />
 
-      <v-btn icon variant="text" size="small" rounded="0" class="mr-2">
+      <!-- Колокольчик (Уведомления) -->
+      <v-btn icon variant="text" size="small" rounded="0" class="mr-2" @click="showInDevNotice">
         <v-badge color="#FF1744" content="2" offset-x="2" offset-y="2">
           <v-icon icon="mdi-bell-outline" size="20" />
         </v-badge>
@@ -95,6 +104,7 @@ const handleLogout = () => {
 
       <v-divider vertical class="mx-2 my-2 border-opacity-10" />
 
+      <!-- Меню диспетчера -->
       <v-menu location="bottom end" transition="fade-transition">
         <template #activator="{ props }">
           <v-btn v-bind="props" variant="text" class="dispatcher-btn px-2" rounded="0">
@@ -110,11 +120,12 @@ const handleLogout = () => {
         </template>
 
         <v-list-item density="compact" class="dispatcher-menu py-0 mt-1" min-width="180">
-          <v-list-item class="py-2"><v-list-item-title class="text-body-2 font-weight-bold">{{ dispatcher.name }}</v-list-item-title>
+          <v-list-item class="py-2">
+            <v-list-item-title class="text-body-2 font-weight-bold">{{ dispatcher.name }}</v-list-item-title>
             <v-list-item-subtitle class="text-caption">{{ dispatcher.role }}</v-list-item-subtitle>
           </v-list-item>
           <v-divider class="border-opacity-10" />
-          <v-list-item prepend-icon="mdi-account-circle-outline" title="Профиль" rounded="0" />
+          <v-list-item prepend-icon="mdi-account-circle-outline" title="Профиль" rounded="0" @click="showInDevNotice" />
           <v-divider class="border-opacity-10" />
           <v-list-item
             prepend-icon="mdi-logout-variant"
@@ -127,10 +138,17 @@ const handleLogout = () => {
       </v-menu>
     </v-app-bar>
 
-    <!-- ВЛОЖЕННЫЕ СТРАНИЦЫ (Карта, Парк, Аудит) -->
     <v-main class="work-viewport">
       <router-view />
     </v-main>
+
+    <!-- Снэкбар «Раздел в разработке» -->
+    <v-snackbar v-model="devSnackbar" timeout="2500" color="#161B22" location="bottom right" rounded="0" class="dev-snackbar">
+      <div class="d-flex align-center">
+        <v-icon icon="mdi-wrench-clock" color="#FFD600" class="mr-2" size="18" />
+        <span class="font-mono text-caption text-grey-lighten-2">Раздел в разработке</span>
+      </div>
+    </v-snackbar>
   </div>
 </template>
 
@@ -189,5 +207,11 @@ const handleLogout = () => {
   background-color: #0A0C10;
   height: 100vh;
   overflow: hidden;
+}
+.dev-snackbar {
+  border: 1px solid #30363D !important;
+}
+.font-mono {
+  font-family: 'JetBrains Mono', Consolas, monospace;
 }
 </style>

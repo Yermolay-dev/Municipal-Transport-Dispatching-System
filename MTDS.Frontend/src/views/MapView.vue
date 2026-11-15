@@ -2,22 +2,7 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import apiClient from '../api'
 
-// Декларация глобального объекта Яндекс.Карт для TypeScript
 declare const ymaps: any
-
-// Интерфейсы данных телеметрии маршрута
-interface StopSchedule {
-  stopName: string
-  lat: number
-  lon: number
-}
-
-interface ActiveRoute {
-  transportType: string
-  pathId: string
-  routeLine: [number, number][]
-  schedule: StopSchedule[]
-}
 
 const mapContainer = ref<HTMLDivElement | null>(null)
 const isLoading = ref<boolean>(true)
@@ -25,11 +10,10 @@ const errorMessage = ref<string | null>(null)
 
 let yandexMapInstance: any = null
 
-// Инициализация экземпляра карты
 const initMap = (): Promise<void> => {
   return new Promise((resolve, reject) => {
     if (typeof ymaps === 'undefined') {
-      return reject(new Error('Скрипт Яндекс.Карт не загружен. Проверьте тег <script> в index.html'))
+      return reject(new Error('Скрипт Яндекс.Карт не загружен. Проверьте index.html.'))
     }
 
     ymaps.ready(() => {
@@ -37,13 +21,11 @@ const initMap = (): Promise<void> => {
         yandexMapInstance = new ymaps.Map(
           mapContainer.value,
           {
-            center: [55.4311, 37.5458], // Начальные координаты
-            zoom: 12,
-            controls: ['zoomControl', 'fullscreenControl']
+            center: [55.4311, 37.5458], // Координаты центра г. Подольск
+            zoom: 13,
+            controls: ['zoomControl', 'fullscreenControl'],
           },
-          {
-            suppressMapOpenBlock: true // Скрываем рекламу и баннеры Яндекса
-          }
+          { suppressMapOpenBlock: true }
         )
         resolve()
       } catch (err) {
@@ -53,96 +35,129 @@ const initMap = (): Promise<void> => {
   })
 }
 
-// Загрузка активных маршрутов с ASP.NET Core и их отрисовка
 const fetchAndRenderActiveRoutes = async () => {
   try {
     isLoading.value = true
     errorMessage.value = null
 
-    // Запрос через настроенный экземпляр Axios (токен подставится автоматически)
-    const response = await apiClient.get('/path/active')
-    
-    console.log('[ОРБИТА] Данные телеметрии с сервера:', response.data)
+    // Шаг 1: Запрашиваем активные маршруты
+    const summaryResponse = await apiClient.get('/path/active')
+    console.log('[ОРБИТА-ГИС] 1. Ответ /path/active:', summaryResponse.data)
 
-    // Защищенный парсинг ответа: обрабатываем массивы, обертки и одиночные объекты
-    let routes: ActiveRoute[] = []
+    const rawSummaries = Array.isArray(summaryResponse.data) ? summaryResponse.data : []
 
-    if (Array.isArray(response.data)) {
-      routes = response.data
-    } else if (response.data && Array.isArray(response.data.data)) {
-      routes = response.data.data
-    } else if (response.data && Array.isArray(response.data.items)) {
-      routes = response.data.items
-    } else if (response.data && Array.isArray(response.data.value)) {
-      routes = response.data.value
-    } else if (response.data && typeof response.data === 'object') {
-      routes = [response.data as ActiveRoute]
-    } else {
-      throw new Error('Некорректный формат данных: сервер прислал пустой или нераспознанный ответ.')
+    if (!rawSummaries.length) {
+      console.warn('[ОРБИТА-ГИС] Список путей пуст!')
+      return
     }
+
+    // Шаг 2: Получаем детальную геометрию каждого пути
+    const detailedPromises = rawSummaries.map(async (item: any) => {
+      const pathId = item.pathId || item.PathId || item.id || item.Id || item.pathNumber || item.PathNumber
+
+      if (!pathId) return null
+
+      try {
+        console.log(`[ОРБИТА-ГИС] 2. Запрос геометрии: /path/active/${encodeURIComponent(pathId)}`)
+        const detailRes = await apiClient.get(`/path/active/${encodeURIComponent(pathId)}`)
+        console.log(`[ОРБИТА-ГИС] 3. Успешно получены детали для ${pathId}:`, detailRes.data)
+        return detailRes.data
+      } catch (err: any) {
+        console.error(`[ОРБИТА-ГИС] Ошибка получения геометрии пути "${pathId}":`, err)
+        return null
+      }
+    })
+
+    const detailedRoutes = (await Promise.all(detailedPromises)).filter(Boolean)
 
     if (!yandexMapInstance) return
 
-    // Коллекция для расчета видимой зоны всех полученных точек
-    const boundsCollection = new ymaps.GeoObjectCollection()
+    let firstPoint: [number, number] | null = null
 
-    routes.forEach((route) => {
-      // 1. Отрисовка траектории маршрута (Polyline)
-      if (route.routeLine && route.routeLine.length > 0) {
-        const polyline = new ymaps.Polyline(
-          route.routeLine,
-          {
-            hintContent: `Маршрут: ${route.pathId || '—'} (${route.transportType || 'Автобус'})`
-          },
-          {
-            strokeColor: '#00B0FF', // Ярко-синий диспетчерский цвет
-            strokeWidth: 4,
-            strokeOpacity: 0.9
-          }
-        )
-
-        yandexMapInstance.geoObjects.add(polyline)
-        boundsCollection.add(polyline)
+    // Шаг 3: Отрисовка всех объектов прямо на карту
+    detailedRoutes.forEach((route: any) => {
+      const pathId = route.pathId || route.PathId || '—'
+      const transportType = route.transportType || route.TransportType || 'Автобус'
+      
+      let rawLine = route.routeLine || route.RouteLine || []
+      if (typeof rawLine === 'string') {
+        try { rawLine = JSON.parse(rawLine) } catch { rawLine = [] }
       }
 
-      // 2. Отрисовка остановочных пунктов (Placemark)
-      if (route.schedule && route.schedule.length > 0) {
-        route.schedule.forEach((stop) => {
-          if (stop.lat && stop.lon) {
+      const schedule = route.schedule || route.Schedule || []
+
+      console.log(`[ОРБИТА-ГИС] Отрисовка маршрута ${pathId}: точек линии = ${rawLine.length}, остановок = ${schedule.length}`)
+
+      // 3.1. Рисуем нить маршрута (Polyline)
+      if (Array.isArray(rawLine) && rawLine.length > 0) {
+        if (!firstPoint && rawLine[0] && rawLine[0].length === 2) {
+          firstPoint = [rawLine[0][0], rawLine[0][1]]
+        }
+
+        const polyline = new ymaps.Polyline(
+          rawLine,
+          {
+            hintContent: `Маршрут ${pathId.toString().toUpperCase()} (${transportType})`,
+          },
+          {
+            strokeColor: '#00B0FF', // Ярко-синий цвет линии
+            strokeWidth: 5,
+            strokeOpacity: 0.9,
+          }
+        )
+        yandexMapInstance.geoObjects.add(polyline)
+      }
+
+      // 3.2. Рисуем маркеры остановок (Placemark)
+      if (Array.isArray(schedule) && schedule.length > 0) {
+        schedule.forEach((stop: any) => {
+          const lat = stop.lat ?? stop.Lat
+          const lon = stop.lon ?? stop.Lon
+          const stopName = stop.stopName || stop.StopName || 'Остановка'
+          const arrivalTime = stop.arrivalTime || stop.ArrivalTime
+
+          if(lat && lon) {
             const placemark = new ymaps.Placemark(
-              [stop.lat, stop.lon],
+              [Number(lat), Number(lon)],
               {
-                hintContent: stop.stopName,
+                hintContent: stopName,
                 balloonContent: `
                   <div style="color: #111; font-family: monospace; font-size: 13px; line-height: 1.4;">
-                    <strong>Остановка:</strong> ${stop.stopName}
+                    <strong>Остановка:</strong> ${stopName}
 
-                    <strong>Маршрут:</strong> ${route.pathId || '—'}
+                    <strong>Маршрут:</strong> ${pathId.toString().toUpperCase()}
+
+                    ${arrivalTime ? `<strong>Прибытие:</strong> ${new Date(arrivalTime).toLocaleTimeString()}` : ''}
                   </div>
-                `
+                `,
               },
               {
-                preset: 'islands#circleDotIcon',iconColor: '#00E676' // Неоново-зеленый маркер
+                preset: 'islands#circleDotIcon',
+                iconColor: '#00E676', // Зеленый неоновый маркер
               }
             )
-
             yandexMapInstance.geoObjects.add(placemark)
-            boundsCollection.add(placemark)
           }
         })
       }
     })
 
-    // Автоматическая подгонка камеры под отрисованные объекты
-    if (boundsCollection.getLength() > 0) {
-      yandexMapInstance.setBounds(boundsCollection.getBounds(), {
+    // Шаг 4: Безопасное масштабирование камеры
+    const bounds = yandexMapInstance.geoObjects.getBounds()
+
+    if (bounds && Array.isArray(bounds) && bounds[0] && bounds[1]) {
+      // Если границы успешно рассчитаны Яндекс.Картами
+      yandexMapInstance.setBounds(bounds, {
         checkZoomRange: true,
-        zoomMargin: 50
+        zoomMargin: 60,
       })
+    } else if (firstPoint) {
+      // Фоллбек: центрируем на первую известную координату маршрута
+      yandexMapInstance.setCenter(firstPoint, 13)
     }
   } catch (error: any) {
-    console.error('[ОРБИТА] Ошибка загрузки маршрутов:', error)
-    errorMessage.value = error.message || 'Сбой получения телеметрии активных путей'
+    console.error('[ОРБИТА-ГИС] Критическая ошибка отрисовки:', error)
+    errorMessage.value = error.message || 'Ошибка обработки данных карты'
   } finally {
     isLoading.value = false
   }
@@ -158,7 +173,6 @@ onMounted(async () => {
   }
 })
 
-// Очистка ресурсов карты при переходе на другой маршрут роутера
 onUnmounted(() => {
   if (yandexMapInstance) {
     yandexMapInstance.destroy()
@@ -169,28 +183,17 @@ onUnmounted(() => {
 
 <template>
   <div class="map-viewport">
-    <!-- Контейнер для рендеринга Яндекс.Карты -->
     <div ref="mapContainer" class="yandex-map-canvas" />
 
-    <!-- Панель статуса опроса сервера -->
     <v-fade-transition>
       <div v-if="isLoading" class="overlay-telemetry-status">
         <v-progress-circular indeterminate color="#00E676" size="20" width="2" class="mr-3" />
-        <span class="text-caption font-mono text-grey-lighten-2">СИНХРОНИЗАЦИЯ ТЕЛЕМЕТРИИ...</span>
+        <span class="text-caption font-mono text-grey-lighten-2">СИНХРОНИЗАЦИЯ СЕРВЕРНОЙ КАРТЫ...</span>
       </div>
     </v-fade-transition>
 
-    <!-- Плашка ошибки (если упал бэкенд или сеть) -->
     <v-fade-transition>
-      <v-alert
-        v-if="errorMessage"
-        type="error"
-        variant="tonal"
-        density="compact"
-        class="overlay-alert"
-        rounded="0"
-        closable
-      >
+      <v-alert v-if="errorMessage" type="error" variant="tonal" density="compact" class="overlay-alert" rounded="0" closable>
         <span class="font-mono text-caption">{{ errorMessage }}</span>
       </v-alert>
     </v-fade-transition>
@@ -202,25 +205,16 @@ onUnmounted(() => {
   position: relative;
   width: 100%;
   height: 100%;
-  overflow: hidden;
   background-color: #0A0C10;
 }
-
 .yandex-map-canvas {
   width: 100%;
   height: 100%;
 }
-
-/* 
-  Стилизация тайлов под Dark Mode командного центра.
-  Инвертирует светлую стандартную карту в тактический темный режим.
-*/
 :deep(.ymaps-2-1-79-map),
 :deep(.ymaps-2-1-79-islets_map) {
   filter: invert(90%) hue-rotate(180%) contrast(90%) brightness(95%);
 }
-
-/* Плашка загрузки */
 .overlay-telemetry-status {
   position: absolute;
   top: 16px;
@@ -233,8 +227,6 @@ onUnmounted(() => {
   border: 1px solid #30363D;
   backdrop-filter: blur(6px);
 }
-
-/* Плашка ошибки */
 .overlay-alert {
   position: absolute;
   bottom: 24px;
@@ -244,8 +236,7 @@ onUnmounted(() => {
   border: 1px solid #FF1744 !important;
   background-color: rgba(26, 16, 19, 0.95) !important;
 }
-
 .font-mono {
-  font-family: "JetBrains Mono", Consolas, monospace;
+  font-family: 'JetBrains Mono', Consolas, monospace;
 }
 </style>
