@@ -20,7 +20,8 @@ public class AuditHandler : INotificationHandler<TransportEmergencyCommandSentEv
         {
             DispatcherId = notification.DispatcherId.ToString(),
             TransportId = notification.TransportId,
-            Action = $"КОМАНДА: {notification.Reason}. ПРИЧИНА: {notification.Reason}",
+            ActionType = notification.ActionType,
+            Reason = notification.Reason,
             CreatedAt = DateTime.UtcNow
         };
         db.AuditLogs.Add(log);

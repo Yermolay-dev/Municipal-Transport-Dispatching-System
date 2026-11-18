@@ -30,7 +30,7 @@ namespace MTDS.Api.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
-                    b.Property<string>("Action")
+                    b.Property<string>("ActionType")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -38,6 +38,10 @@ namespace MTDS.Api.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("DispatcherId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Reason")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -307,7 +311,7 @@ namespace MTDS.Api.Migrations
                             Email = "admin@mtds.ru",
                             LastEntranceAt = new DateTime(2026, 11, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Name = "Ермолай",
-                            PasswordHash = "$2y$11$LAsjsD6AhrIhEfhMWwzqWeGqvZ0NcW6JskpB/P3EF./zy/FuGp3sS",
+                            PasswordHash = "$2a$11$LAsjsD6AhrIhEfhMWwzqWeGqvZ0NcW6JskpB/P3EF./zy/FuGp3sS",
                             PhoneNumber = "",
                             PhotoUrl = "",
                             Role = "Dispatcher",
