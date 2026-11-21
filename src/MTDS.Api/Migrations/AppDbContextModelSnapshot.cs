@@ -232,6 +232,9 @@ namespace MTDS.Api.Migrations
                     b.Property<int>("Capacity")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("NumberPlate")
                         .IsRequired()
                         .HasColumnType("text");
@@ -253,6 +256,7 @@ namespace MTDS.Api.Migrations
                         {
                             Id = 105,
                             Capacity = 50,
+                            IsDeleted = false,
                             NumberPlate = "A154AA150",
                             Status = "in_garage",
                             Type = "bus"
@@ -274,6 +278,9 @@ namespace MTDS.Api.Migrations
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
 
                     b.Property<DateTime>("LastEntranceAt")
                         .HasColumnType("timestamp with time zone");
@@ -309,6 +316,7 @@ namespace MTDS.Api.Migrations
                             CreatedAt = new DateTime(2026, 11, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             DriverLicenseNumber = "",
                             Email = "admin@mtds.ru",
+                            IsDeleted = false,
                             LastEntranceAt = new DateTime(2026, 11, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Name = "Ермолай",
                             PasswordHash = "$2a$11$LAsjsD6AhrIhEfhMWwzqWeGqvZ0NcW6JskpB/P3EF./zy/FuGp3sS",

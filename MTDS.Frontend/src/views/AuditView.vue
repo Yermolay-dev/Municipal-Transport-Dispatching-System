@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import apiClient from '../api'
 
 interface AuditRecord {
@@ -18,7 +18,26 @@ const isLoading = ref<boolean>(false)
 const auditLogs = ref<AuditRecord[]>([])
 const errorMessage = ref<string | null>(null)
 
-// Колонки таблицы с четким разделением Команды и Причины
+// Проверка роли администратора для экспорта
+const userRole = ref<string>(localStorage.getItem('role') || 'Dispatcher')
+const isAdmin = computed(() => userRole.value === 'Admin')
+
+// Снэкбар уведомлений
+const snackbar = ref({
+  show: false,
+  text: '',
+  color: '#00E676',
+})
+
+const showNotice = (text: string, isError: boolean = false) => {
+  snackbar.value = {
+    show: true,
+    text,
+    color: isError ? '#FF1744' : '#00E676',
+  }
+}
+
+// Колонки таблицы
 const headers = [
   { title: 'ВРЕМЯ СОБЫТИЯ', key: 'createdAt', align: 'start' as const },
   { title: 'ОПЕРАТОР / ДИСПЕТЧЕР', key: 'dispatcher', align: 'start' as const },
@@ -28,12 +47,11 @@ const headers = [
   { title: 'ID', key: 'id', align: 'end' as const },
 ]
 
-// Словарь расшифровки кодов команд в человекочитаемые русские названия
 const commandCodeDictionary: Record<string, { title: string; color: string }> = {
-  STOP: { title: 'Экстренная остановка', color: '#FF1744' },
-  RETURN_TO_PARK: { title: 'Возврат в парк', color: '#FFD600' },
+  STOP: { title: 'Экстренная остановка (блокировка)', color: '#FF1744' },
+  RETURN_TO_PARK: { title: 'Возврат в парк (сход с линии)', color: '#FFD600' },
   RADIO_CALL_REQUIRED: { title: 'Срочный вызов по рации', color: '#FF9100' },
-  ROUTE_DETOUR: { title: 'Объезд препятствия', color: '#29B6F6' },
+  ROUTE_DETOUR: { title: 'Объезд препятствия (смена маршрута)', color: '#29B6F6' },
   DOORS_UNLOCK: { title: 'Разблокировка дверей', color: '#FF1744' },
   SILENT_ALARM_ACK: { title: 'Подтверждение тихой тревоги', color: '#FF1744' },
 }
@@ -54,13 +72,11 @@ const formatDateTime = (dateStr: string) => {
   return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`
 }
 
-// Разбор записи аудита на правильную команду и причину
 const parseActionField = (item: any): { commandName: string; commandColor: string; reasonText: string } => {
   const rawAction = String(item.action || item.Action || '').trim()
   const explicitCommand = String(item.command || item.Command || item.actionType || item.ActionType || '').trim()
   const explicitReason = String(item.reason || item.Reason || item.comment || item.Comment || '').trim()
 
-  // 1. Проверяем, есть ли явный код команды (например STOP или RETURN_TO_PARK)
   const codeCandidate = explicitCommand || (commandCodeDictionary[rawAction] ? rawAction : '')
 
   if (commandCodeDictionary[codeCandidate]) {
@@ -71,13 +87,11 @@ const parseActionField = (item: any): { commandName: string; commandColor: strin
     }
   }
 
-  // 2. Если в Action записана строка вида "Команда: X, Причина: Y" или "X: Y"
   if (rawAction.includes(':')) {
     const parts = rawAction.split(':')
     const firstPart = parts[0].trim().replace(/^команда\s*/i, '')
     const secondPart = parts.slice(1).join(':').trim().replace(/^причина\s*/i, '')
 
-    // Если первая часть была кодом команды
     if (commandCodeDictionary[firstPart]) {
       return {
         commandName: commandCodeDictionary[firstPart].title,
@@ -93,11 +107,10 @@ const parseActionField = (item: any): { commandName: string; commandColor: strin
     }
   }
 
-  // 3. Штатные системные логи из базы данных
   return {
     commandName: rawAction || 'Системное событие',
     commandColor: rawAction.includes('ЭКСТРЕН') ? '#FF1744' : '#00E676',
-    reasonText: explicitReason || 'Штатная фиксация телеметрии',
+    reasonText:explicitReason || 'Штатная фиксация телеметрии',
   }
 }
 
@@ -148,10 +161,61 @@ const fetchAuditLogs = async () => {
     })
   } catch (err: any) {
     console.error('[ОРБИТА-АУДИТ] Ошибка журнала аудита:', err)
-    errorMessage.value = err.message || 'Ошибка загрузки протокола системных событий'
+    errorMessage.value = err.response?.data?.message || err.message || 'Ошибка загрузки протокола системных событий'
   } finally {
     isLoading.value = false
   }
+}
+
+// Отфильтрованные логи для выгрузки в CSV
+const filteredLogs = computed(() => {
+  if (!search.value.trim()) return auditLogs.value
+  const q = search.value.toLowerCase().trim()
+  return auditLogs.value.filter(
+    (log) =>
+      String(log.id).toLowerCase().includes(q) ||
+      log.dispatcher.toLowerCase().includes(q) ||
+      log.transport.toLowerCase().includes(q) ||
+      log.commandName.toLowerCase().includes(q) ||
+      log.reason.toLowerCase().includes(q)
+  )
+})
+
+// Экспорт в CSV с UTF-8 BOM
+const exportToCsv = () => {
+  const data = filteredLogs.value
+  if (!data.length) {
+    showNotice('Нет данных для экспорта', true)
+    return
+  }
+
+  const csvHeaders = ['ID', 'Время события', 'Оператор / Диспетчер', 'Транспорт', 'Команда / Событие', 'Причина / Детали']
+  const csvRows = data.map((item) => [
+    item.id,
+    `"${formatDateTime(item.createdAt)}"`,
+    `"${item.dispatcher}"`,
+    `"${item.transport}"`,
+    `"${item.commandName.replace(/"/g, '""')}"`,
+    `"${item.reason.replace(/"/g, '""')}"`,
+  ])
+
+  // \uFEFF обеспечивает корректное открытие кириллицы в Excel
+  const csvString = '\uFEFF' + [csvHeaders.join(';'), ...csvRows.map((r) => r.join(';'))].join('\r\n')
+  const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+
+  const now = new Date()
+  const dateStamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`
+
+  link.setAttribute('href', url)
+  link.setAttribute('download', `orbita_audit_log_${dateStamp}.csv`)
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+
+  showNotice(`Экспорт завершен: сохранено ${data.length} записей`)
 }
 
 onMounted(() => {
@@ -165,9 +229,8 @@ onMounted(() => {
       <div>
         <h1 class="text-h6 font-weight-black tracking-wider brand-title mb-1">
           ЖУРНАЛ АУДИТА СИСТЕМЫ
-        </h1>
-        <p class="text-caption text-disabled font-mono">
-          ПРОТОКОЛИРОВАНИЕ ДЕЙСТВИЙ ОПЕРАТОРОВ И ИНЦИДЕНТОВ ТЕЛЕМЕТРИИ
+        </h1><p class="text-caption text-disabled font-mono">
+          НЕИЗМЕНЯЕМЫЙ ПРОТОКОЛ ОПЕРАЦИЙ (ЧЁРНЫЙ ЯЩИК СДМТ)
         </p>
       </div>
 
@@ -183,6 +246,21 @@ onMounted(() => {
           class="font-mono search-input mr-3"
           style="width: 280px;"
         />
+
+        <!-- Кнопка экспорта в CSV (видна только Admin) -->
+        <v-btn
+          v-if="isAdmin"
+          variant="outlined"
+          color="#00E676"
+          size="small"
+          rounded="0"
+          prepend-icon="mdi-file-delimited-outline"
+          class="font-mono mr-2 border-subtle"
+          @click="exportToCsv"
+        >
+          ЭКСПОРТ В CSV
+        </v-btn>
+
         <v-btn
           icon="mdi-refresh"
           variant="outlined"
@@ -206,14 +284,12 @@ onMounted(() => {
         items-per-page-text="Строк на странице:"
         no-data-text="Записи в журнале аудита отсутствуют"
       >
-        <!-- Время -->
         <template #item.createdAt="{ item, value }">
           <span class="text-grey-lighten-2 font-weight-medium">
             {{ formatDateTime(value ?? (item as any).createdAt ?? (item as any).raw?.createdAt) }}
           </span>
         </template>
 
-        <!-- Диспетчер -->
         <template #item.dispatcher="{ item, value }">
           <v-tooltip :text="(item as any).rawDispatcherId ? `Идентификатор: ${(item as any).rawDispatcherId}` : 'Оператор СДМТ'" location="top">
             <template #activator="{ props }">
@@ -222,14 +298,14 @@ onMounted(() => {
               </span>
             </template>
           </v-tooltip>
-        </template><!-- Транспорт -->
+        </template>
+
         <template #item.transport="{ item, value }">
           <span class="number-plate-badge">
             {{ value ?? (item as any).transport ?? (item as any).raw?.transport }}
           </span>
         </template>
 
-        <!-- Колонка КОМАНДА: всегда русское официальное наименование -->
         <template #item.commandName="{ item, value }">
           <v-chip
             size="x-small"
@@ -246,14 +322,12 @@ onMounted(() => {
           </v-chip>
         </template>
 
-        <!-- Колонка ПРИЧИНА: текст обоснования диспетчера -->
         <template #item.reason="{ item, value }">
           <span class="reason-cell text-grey-lighten-2">
             {{ value ?? (item as any).reason ?? (item as any).raw?.reason }}
           </span>
         </template>
 
-        <!-- ID -->
         <template #item.id="{ item, value }">
           <span class="text-disabled">
             #{{ value ?? (item as any).id ?? (item as any).raw?.id }}
@@ -265,6 +339,25 @@ onMounted(() => {
     <v-alert v-if="errorMessage" type="error" variant="tonal" class="mt-4" rounded="0">
       <span class="font-mono text-caption">{{ errorMessage }}</span>
     </v-alert>
+
+    <!-- Снэкбар -->
+    <v-snackbar
+      v-model="snackbar.show"
+      :color="snackbar.color"
+      timeout="4000"
+      location="top right"
+      rounded="0"
+      class="font-mono"
+    >
+      <div class="d-flex align-center">
+        <v-icon
+          :icon="snackbar.color === '#FF1744' ? 'mdi-alert-circle-outline' : 'mdi-check-circle-outline'"
+          color="white"
+          class="mr-2"
+        />
+        <span class="text-caption font-weight-bold text-white">{{ snackbar.text }}</span>
+      </div>
+    </v-snackbar>
   </div>
 </template>
 

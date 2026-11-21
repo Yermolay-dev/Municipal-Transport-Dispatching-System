@@ -147,7 +147,7 @@ const fetchAndAggregateRoutes = async () => {
     errorMessage.value = null
 
     // 1. Получаем список путей
-    const summaryRes = await apiClient.get('/path/active')
+    const summaryRes = await apiClient.get('/routes/active')
     const rawSummaries = Array.isArray(summaryRes.data) ? summaryRes.data : []
     if (!rawSummaries.length) return
 
@@ -157,7 +157,7 @@ const fetchAndAggregateRoutes = async () => {
       if (!pathId) return null
 
       try {
-        const detailRes = await apiClient.get(`/path/active/${encodeURIComponent(pathId)}`)
+        const detailRes = await apiClient.get(`/routes/active/${encodeURIComponent(pathId)}`)
         const data = detailRes.data
 
         let rawLine = data.routeLine || data.RouteLine || []

@@ -4,6 +4,7 @@ import MapView from '../views/MapView.vue'
 import LoginView from '../views/LoginView.vue'
 import FleetView from '../views/FleetView.vue'
 import AuditView from '../views/AuditView.vue'
+import RoutesAdminView from '../views/RoutesAdminView.vue' // <-- Импортируем новый View
 
 const routes: RouteRecordRaw[] = [
     {
@@ -34,6 +35,13 @@ const routes: RouteRecordRaw[] = [
                 component: AuditView,
                 meta: { requiresAdmin: true, title: 'Журнал аудита' },
             },
+            // 4-Й РАЗДЕЛ (ТОЛЬКО ДЛЯ АДМИНИСТРАТОРА)
+            {
+                path: 'admin/routes',
+                name: 'routes-admin',
+                component: RoutesAdminView,
+                meta: { requiresAdmin: true, title: 'Маршруты и остановки' },
+            },
         ],
     },
     {
@@ -47,28 +55,22 @@ const router = createRouter({
     routes,
 })
 
-// Современный навигационный хук без вызова устаревшего callback'а next()
 router.beforeEach((to) => {
     const token = localStorage.getItem('token')
     const role = localStorage.getItem('role')
     const isPublic = to.meta.public === true
 
-    // 1. Не авторизован и идет в закрытую зону
     if (!token && !isPublic) {
         return '/login'
     }
-
-    // 2. Авторизован и пытается открыть /login
     if (token && to.path === '/login') {
         return '/'
     }
-
-    // 3. RBAC: Проверка прав администратора
+    // RBAC-проверка: не-Admin не попадет на /audit и /admin/routes
     if (to.meta.requiresAdmin && role !== 'Admin') {
         return '/'
     }
 
-    // Штатный переход разрешен
     return true
 })
 

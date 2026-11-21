@@ -14,4 +14,5 @@ public class User
     public string? DriverLicenseNumber { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public DateTime LastEntranceAt { get; set; }
+    public bool IsDeleted { get; set; } = false;
 }
