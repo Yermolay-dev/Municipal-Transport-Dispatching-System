@@ -15,7 +15,7 @@ public class GetParkHandler : IRequestHandler<GetParkQuery, GetParkResponse?>
 
     public async Task<GetParkResponse?> Handle(GetParkQuery req, CancellationToken cancel)
     {
-        var data = await _db.Transports.ToListAsync(cancel);
+        var data = await _db.Transports.Where(r => !r.IsDeleted).ToListAsync(cancel);
         var res = new GetParkResponse
         {
             Park = data
@@ -66,8 +66,8 @@ public class DeleteVehicleHandler : IRequestHandler<DeleteVehicleCommand, bool>
         if (vehicle == null)
             return false;
         bool isActive = await _db.TransportAssigments.AnyAsync(r => r.Transport.Id == command.Id, cancel);
-        if (isActive)
-            return false;
+        // if (isActive)
+        //     return false;
         vehicle.IsDeleted = true;
         vehicle.Status = "archived";
         await _db.SaveChangesAsync(cancel);

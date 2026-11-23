@@ -22,27 +22,18 @@ public class LoginHandler : IRequestHandler<LoginQuery, LoginResponse?>
 
     public async Task<LoginResponse?> Handle(LoginQuery request, CancellationToken cancel)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(r => r.Email == request.Email, cancel);
+        var user = await _db.Users.FirstOrDefaultAsync(r => r.Email == request.Email && !r.IsDeleted, cancel);
         if (user == null)
-        {
-            Console.WriteLine("Пользователя такого нету в БД");
             return null;
-
-        }
-
-        Console.WriteLine($"Пользователь имеет пароль {request.Password}, login: {request.Email}, Length: {user.PasswordHash.Length}");
-        Console.WriteLine($"Length.Trim:  {user.PasswordHash.Trim().Length}");
 
         bool isPasswordCorrect = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
 
         if (!isPasswordCorrect)
-        {
-            Console.WriteLine("Пользователь имеет неверный пароль или хэш не совпал");
             return null;
 
-        }
-
         string jwtToken = _jwtProvider.GenerateToken(user);
+        user.LastEntranceAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(cancel);
         return new LoginResponse
         {
             Status = "Successfully",

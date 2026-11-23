@@ -158,8 +158,8 @@ public class DeleteRouteHandler : IRequestHandler<DeleteRouteCommand, bool>
         if (route == null)
             return false;
         bool transport = await _db.TransportAssigments.AnyAsync(a => a.Route.Id == command.Id, cancel);
-        if (transport)
-            return false;
+        // if (transport)
+        //     return false;
         if (route.RouteStops.Any())
             _db.RouteStops.RemoveRange(route.RouteStops);
         _db.Routes.Remove(route);

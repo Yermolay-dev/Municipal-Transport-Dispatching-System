@@ -50,7 +50,6 @@ public class AddSchedulesHandler : IRequestHandler<AddSchedulesCommand, bool>
 
     public async Task<bool> Handle(AddSchedulesCommand command, CancellationToken cancel)
     {
-        // Надёжный парсинг Guid вместо сравнения строк в SQL
         if (!Guid.TryParse(command.DriverId, out var driverGuid))
             return false;
 
@@ -98,7 +97,7 @@ public class AddSchedulesHandler : IRequestHandler<AddSchedulesCommand, bool>
         await _db.SaveChangesAsync(cancel);
         return true;
     }
-} // <-- закрываем AddSchedulesHandler здесь!
+}
 
 public class AddSchedulesEndHandler : IRequestHandler<AddSchedulesEndCommand, bool>
 {

@@ -49,7 +49,7 @@ public class TransportLayerEndpoint : ControllerBase
     }
 
 
-    [HttpPut("{id}")]
+    [HttpPut("active/{id}")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> PutRoute(int id, [FromBody] PutRouteCommand command, CancellationToken cancel)
     {
