@@ -43,6 +43,65 @@ const showNotice = (text: string, isError: boolean = false) => {
   }
 }
 
+// --- УПРАВЛЕНИЕ СЛАЙДЕРАМИ-РАЗДЕЛИТЕЛЯМИ (SPLITTER) ---
+const stopsSplitContainer = ref<HTMLDivElement | null>(null)
+const stopsSplitPercent = ref<number>(56)
+const isDraggingStopsSplit = ref<boolean>(false)
+
+const routesSplitContainer = ref<HTMLDivElement | null>(null)
+const routesSplitPercent = ref<number>(44)
+const isDraggingRoutesSplit = ref<boolean>(false)
+
+// Логика перетаскивания для вкладки Остановок
+const startStopsSplitDrag = () => {
+  isDraggingStopsSplit.value = true
+  document.addEventListener('mousemove', onStopsSplitDrag)
+  document.addEventListener('mouseup', stopStopsSplitDrag)
+}
+
+const onStopsSplitDrag = (e: MouseEvent) => {
+  if (!isDraggingStopsSplit.value || !stopsSplitContainer.value) return
+  const rect = stopsSplitContainer.value.getBoundingClientRect()
+  const offset = e.clientX - rect.left
+  const percent = (offset / rect.width) * 100
+  if (percent >= 30 && percent <= 70) {
+    stopsSplitPercent.value = percent
+    if (stopsMapInstance) stopsMapInstance.container.fitToViewport()
+  }
+}
+
+const stopStopsSplitDrag = () => {
+  isDraggingStopsSplit.value = false
+  document.removeEventListener('mousemove', onStopsSplitDrag)
+  document.removeEventListener('mouseup', stopStopsSplitDrag)
+  if (stopsMapInstance) stopsMapInstance.container.fitToViewport()
+}
+
+// Логика перетаскивания для вкладки Маршрутов
+const startRoutesSplitDrag = () => {
+  isDraggingRoutesSplit.value = true
+  document.addEventListener('mousemove', onRoutesSplitDrag)
+  document.addEventListener('mouseup', stopRoutesSplitDrag)
+}
+
+const onRoutesSplitDrag = (e: MouseEvent) => {
+  if (!isDraggingRoutesSplit.value || !routesSplitContainer.value) return
+  const rect = routesSplitContainer.value.getBoundingClientRect()
+  const offset = e.clientX - rect.left
+  const percent = (offset / rect.width) * 100
+  if (percent >= 30 && percent <= 70) {
+    routesSplitPercent.value = percent
+    if (routesMapInstance) routesMapInstance.container.fitToViewport()
+  }
+}
+
+const stopRoutesSplitDrag = () => {
+  isDraggingRoutesSplit.value = false
+  document.removeEventListener('mousemove', onRoutesSplitDrag)
+  document.removeEventListener('mouseup', stopRoutesSplitDrag)
+  if (routesMapInstance) routesMapInstance.container.fitToViewport()
+}
+
 // --- ДИАЛОГ ПОДТВЕРЖДЕНИЯ УДАЛЕНИЯ ---
 const deleteConfirmDialog = ref({
   open: false,
@@ -69,10 +128,8 @@ const stopsList = ref<StopItem[]>([])
 const isStopsLoading = ref<boolean>(false)
 const stopsSearch = ref<string>('')
 
-// Режим редактирования остановки
 const editingStopId = ref<number | null>(null)
 
-// Форма остановки
 const stopForm = ref({
   name: '',
   lat: null as number | null,
@@ -80,20 +137,18 @@ const stopForm = ref({
 })
 const isSavingStop = ref<boolean>(false)
 
-// Карта для пикинга координат остановки
 const stopsMapContainer = ref<HTMLDivElement | null>(null)
 let stopsMapInstance: any = null
 let tempStopPlacemark: any = null
 
 const stopTableHeaders = [
-  { title: 'ID', key: 'id', align: 'start' as const, width: '70px' },
+  { title: 'ID', key: 'id', align: 'start' as const, width: '65px' },
   { title: 'НАЗВАНИЕ ОСТАНОВКИ', key: 'name', align: 'start' as const },
   { title: 'ШИРОТА (LAT)', key: 'lat', align: 'start' as const },
   { title: 'ДОЛГОТА (LON)', key: 'lon', align: 'start' as const },
-  { title: 'ДЕЙСТВИЯ', key: 'actions', align: 'center' as const, sortable: false, width: '110px' },
+  { title: 'ДЕЙСТВИЯ', key: 'actions', align: 'center' as const, sortable: false, width: '100px' },
 ]
 
-// Загрузка реестра остановок
 const fetchStops = async () => {
   try {
     isStopsLoading.value = true
@@ -118,7 +173,6 @@ const fetchStops = async () => {
   }
 }
 
-// Инициализация карты выбора координат для остановки
 const initStopsMap = () => {
   if (typeof ymaps === 'undefined' || !stopsMapContainer.value || stopsMapInstance) return
 
@@ -126,28 +180,25 @@ const initStopsMap = () => {
     stopsMapInstance = new ymaps.Map(
       stopsMapContainer.value,
       {
-        center: [55.4311, 37.5458], // Подольск
+        center: [55.4311, 37.5458],
         zoom: 13,
         controls: ['zoomControl'],
       },
       { suppressMapOpenBlock: true }
     )
 
-    // Клик по карте заполняет координаты
     stopsMapInstance.events.add('click', (e: any) => {
-      const coords = e.get('coords') // [lat, lon]
+      const coords = e.get('coords')
       stopForm.value.lat = Number(coords[0].toFixed(6))
       stopForm.value.lon = Number(coords[1].toFixed(6))
-
       updateStopMarker(coords)
     })
   })
 }
 
-// Обновление метки на мини-карте остановок
 const updateStopMarker = (coords: [number, number]) => {
   if (!stopsMapInstance) return
-  if (tempStopPlacemark){
+  if (tempStopPlacemark) {
     tempStopPlacemark.geometry.setCoordinates(coords)
   } else {
     tempStopPlacemark = new ymaps.Placemark(
@@ -159,7 +210,6 @@ const updateStopMarker = (coords: [number, number]) => {
   }
 }
 
-// Старт редактирования остановки
 const startEditStop = (stop: StopItem) => {
   editingStopId.value = stop.id
   stopForm.value = {
@@ -175,7 +225,6 @@ const startEditStop = (stop: StopItem) => {
   }
 }
 
-// Отмена редактирования остановки
 const cancelEditStop = () => {
   editingStopId.value = null
   stopForm.value = { name: '', lat: null, lon: null }
@@ -185,7 +234,6 @@ const cancelEditStop = () => {
   }
 }
 
-// Сохранение (POST или PUT) остановки
 const handleSaveStop = async () => {
   if (!stopForm.value.name.trim() || !stopForm.value.lat || !stopForm.value.lon) {
     showNotice('Заполните название и укажите точку на карте', true)
@@ -201,11 +249,9 @@ const handleSaveStop = async () => {
     }
 
     if (editingStopId.value) {
-      // РЕДАКТИРОВАНИЕ (PUT)
       await apiClient.put(`/stops/${editingStopId.value}`, payload)
       showNotice(`Остановка "${payload.name}" успешно обновлена!`)
     } else {
-      // СОЗДАНИЕ (POST)
       await apiClient.post('/stops', payload)
       showNotice(`Остановка "${payload.name}" успешно добавлена!`)
     }
@@ -227,7 +273,6 @@ const routesList = ref<RouteSummaryItem[]>([])
 const isRoutesLoading = ref<boolean>(false)
 const routesSearch = ref<string>('')
 
-// Режим редактирования маршрута
 const editingRouteId = ref<number | null>(null)
 
 const routeForm = ref({
@@ -237,16 +282,15 @@ const routeForm = ref({
 
 const transportTypeOptions = [
   { title: 'Автобус', value: 'bus' },
+  { title: 'Троллейбус', value: 'trolleybus' },
   { title: 'Трамвай', value: 'tram' },
   { title: 'Маршрутка', value: 'minibus' },
 ]
 
-// Добавление остановок в маршрут
 const selectedStopIdToAdd = ref<number | null>(null)
 const minutesFromStartToAdd = ref<number>(0)
 const routeStopsList = ref<RouteStopDraft[]>([])
 
-// Интерактивное рисование линии
 const routesMapContainer = ref<HTMLDivElement | null>(null)
 let routesMapInstance: any = null
 let routePolyline: any = null
@@ -254,18 +298,36 @@ const routePoints = ref<[number, number][]>([])
 const isSavingRoute = ref<boolean>(false)
 
 const routeTableHeaders = [
-  { title: 'ID', key: 'id', align: 'start' as const, width: '60px' },
+  { title: 'ID', key: 'id', align: 'start' as const, width: '55px' },
   { title: 'НОМЕР', key: 'pathId', align: 'start' as const },
   { title: 'ТИП ТРАНСПОРТА', key: 'transportType', align: 'start' as const },
-  { title: 'ДЕЙСТВИЯ', key: 'actions', align: 'center' as const, sortable: false, width: '100px' },
+  { title: 'ДЕЙСТВИЯ', key: 'actions', align: 'center' as const, sortable: false, width: '90px' },
 ]
 
-// Загрузка реестра существующих маршрутов
 const fetchRoutes = async () => {
   try {
     isRoutesLoading.value = true
-    const res = await apiClient.get('/routes/active')
-    const raw = Array.isArray(res.data) ? res.data : []
+    let res: any = null
+    const candidateUrls = ['/routes/active', '/routes']
+
+    for (const url of candidateUrls) {
+      try {
+        res = await apiClient.get(url)
+        if (res && (res.status === 200 || Array.isArray(res.data) || res.data?.items)) {
+          break
+        }
+      } catch (e: any) {
+        if (e.response?.status === 404) continue
+        throw e
+      }
+    }
+
+    if (!res) {
+      routesList.value = []
+      return
+    }
+
+    const raw = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.data || [])
 
     routesList.value = raw.map((r: any) => ({
       id: Number(r.id ?? r.Id),
@@ -279,7 +341,6 @@ const fetchRoutes = async () => {
   }
 }
 
-// Инициализация карты-конструктора
 const initRoutesMap = () => {
   if (typeof ymaps === 'undefined' || !routesMapContainer.value || routesMapInstance) return
 
@@ -294,7 +355,6 @@ const initRoutesMap = () => {
       { suppressMapOpenBlock: true }
     )
 
-    // Клик добавляет точку в Polyline
     routesMapInstance.events.add('click', (e: any) => {
       const coords = e.get('coords')
       const fixedPoint: [number, number] = [Number(coords[0].toFixed(6)), Number(coords[1].toFixed(6))]
@@ -304,7 +364,6 @@ const initRoutesMap = () => {
   })
 }
 
-// Обновление Polyline на карте
 const updatePolylineOnMap = () => {
   if (!routesMapInstance) return
 
@@ -327,7 +386,6 @@ const updatePolylineOnMap = () => {
   }
 }
 
-// Отмена последней точки линии
 const removeLastRoutePoint = () => {
   if (routePoints.value.length > 0) {
     routePoints.value.pop()
@@ -335,13 +393,11 @@ const removeLastRoutePoint = () => {
   }
 }
 
-// Очистка всех точек линии
 const clearRoutePoints = () => {
   routePoints.value = []
   updatePolylineOnMap()
 }
 
-// Добавление остановки в маршрут
 const addStopToRoute = () => {
   if (!selectedStopIdToAdd.value) return
 
@@ -360,7 +416,6 @@ const addStopToRoute = () => {
   selectedStopIdToAdd.value = null
 }
 
-// Удаление остановки из списка
 const removeStopFromRoute = (index: number) => {
   routeStopsList.value.splice(index, 1)
   routeStopsList.value.forEach((item, idx) => {
@@ -368,11 +423,26 @@ const removeStopFromRoute = (index: number) => {
   })
 }
 
-// Старт редактирования маршрута
 const startEditRoute = async (routeSummary: RouteSummaryItem) => {
   try {
     isSavingRoute.value = true
-    const detailRes = await apiClient.get(`/routes/active/${encodeURIComponent(routeSummary.pathId)}`)
+    let detailRes: any = null
+
+    const candidateDetailUrls = [
+      `/routes/active/${encodeURIComponent(routeSummary.pathId)}`,
+    ]
+
+    for (const url of candidateDetailUrls) {
+      try {
+        detailRes = await apiClient.get(url)
+        if (detailRes && detailRes.data) break
+      } catch (e: any) {
+        if (e.response?.status === 404) continue
+        throw e
+      }
+    }
+
+    if (!detailRes) throw new Error('Маршрут не найден на сервере')
     const data = detailRes.data
 
     editingRouteId.value = Number(data.id ?? data.Id ?? routeSummary.id)
@@ -381,23 +451,38 @@ const startEditRoute = async (routeSummary: RouteSummaryItem) => {
       transportType: data.transportType || data.TransportType || routeSummary.transportType,
     }
 
-    // Восстанавливаем расписание остановок
     const rawSchedule = data.schedule || data.Schedule || []
-    routeStopsList.value = rawSchedule.map((s: any, idx: number) => ({
-      stopId: Number(s.stopId ?? s.StopId ?? 0),
-      stopName: s.stopName || s.StopName || `Остановка #${s.stopId}`,
-      stopOrder: Number(s.stopOrder ?? s.StopOrder ?? idx + 1),
-      minutesFromStart: Number(s.minutesFromStart ?? s.MinutesFromStart ?? 0),
-    }))
+    routeStopsList.value = rawSchedule.map((s: any, idx: number) => {
+      let resolvedStopId = Number(s.stopId ?? s.StopId ?? s.id ?? s.Id ?? 0)
+      const stopName = s.stopName || s.StopName || ''
 
-    // Восстанавливаем геометрию нити
+      if (!resolvedStopId && stopsList.value.length > 0) {
+        const matched = stopsList.value.find(
+          (stop) =>
+            (stopName && stop.name.trim().toLowerCase() === stopName.trim().toLowerCase()) ||
+            (s.lat && s.lon && Math.abs(stop.lat - Number(s.lat)) < 0.0001 && Math.abs(stop.lon - Number(s.lon)) < 0.0001)
+        )
+        if (matched) resolvedStopId = matched.id
+      }
+
+      const minutes = Number(
+        s.minutesFromStart ?? s.MinutesFromStart ?? s.minuteFromStart ?? s.MinuteFromStart ?? 0
+      )
+
+      return {
+        stopId: resolvedStopId,
+        stopName: stopName || (resolvedStopId ? `Остановка #${resolvedStopId}` : 'Остановка'),
+        stopOrder: Number(s.stopOrder ?? s.StopOrder ?? idx + 1),
+        minutesFromStart: minutes,
+      }
+    })
+
     let rawLine = data.routeLine || data.RouteLine || []
     if (typeof rawLine === 'string') {
       try { rawLine = JSON.parse(rawLine) } catch { rawLine = [] }
     }
     routePoints.value = rawLine
 
-    // Переключаемся на таб маршрутов и фокусируем карту
     activeTab.value = 'routes'
     await nextTick()
     if (!routesMapInstance) initRoutesMap()
@@ -419,7 +504,6 @@ const startEditRoute = async (routeSummary: RouteSummaryItem) => {
   }
 }
 
-// Отмена редактирования маршрута
 const cancelEditRoute = () => {
   editingRouteId.value = null
   routeForm.value = { pathNumber: '', transportType: 'bus' }
@@ -428,10 +512,14 @@ const cancelEditRoute = () => {
   clearRoutePoints()
 }
 
-// Сохранение (POST или PUT) маршрута
 const handleSaveRoute = async () => {
-  if (!routeForm.value.pathNumber.trim()) {
+  const pNum = routeForm.value.pathNumber.trim()
+  if (!pNum) {
     showNotice('Укажите номер маршрута (например, 52к)', true)
+    return
+  }
+  if (pNum.length > 10) {
+    showNotice('Номер маршрута не может превышать 10 символов', true)
     return
   }
   if (routeStopsList.value.length < 2) {
@@ -447,24 +535,21 @@ const handleSaveRoute = async () => {
     isSavingRoute.value = true
 
     const payload = {
-      pathNumber: routeForm.value.pathNumber.trim(),
+      pathNumber: pNum,
       transportType: routeForm.value.transportType,
-      routeLine: routePoints.value,
-      stops: routeStopsList.value.map((s) => ({
-        stopId: s.stopId,
-        stopOrder: s.stopOrder,
-        minutesFromStart: s.minutesFromStart,
+      routeLine: routePoints.value,stops: routeStopsList.value.map((s, idx) => ({
+        stopId: Number(s.stopId),
+        stopOrder: Number(s.stopOrder || idx + 1),
+        minutesFromStart: Number(s.minutesFromStart || 0),
       })),
     }
 
     if (editingRouteId.value) {
-      // РЕДАКТИРОВАНИЕ (PUT)
-      await apiClient.put(`/routes/${editingRouteId.value}`, payload)
+      await apiClient.put(`/routes/active/${editingRouteId.value}`, payload)
       showNotice(`Маршрут ${payload.pathNumber} успешно обновлен!`)
     } else {
-      // СОЗДАНИЕ (POST)
       await apiClient.post('/routes', payload)
-      showNotice(`Маршрут ${payload.pathNumber} успешно создан и запущен!`)
+      showNotice(`Маршрут ${payload.pathNumber} успешно создан!`)
     }
 
     cancelEditRoute()
@@ -477,9 +562,6 @@ const handleSaveRoute = async () => {
   }
 }
 
-// ==============================================================
-// ОБЩЕЕ УДАЛЕНИЕ (DELETE)
-// ==============================================================
 const handleConfirmDelete = async () => {
   const { type, id, title } = deleteConfirmDialog.value
   try {
@@ -491,7 +573,7 @@ const handleConfirmDelete = async () => {
       if (editingStopId.value === id) cancelEditStop()
       await fetchStops()
     } else {
-      await apiClient.delete(`/routes/${id}`)
+      await apiClient.delete(`/routes/active/${id}`)
       showNotice(`Маршрут "${title}" удален`)
       if (editingRouteId.value === id) cancelEditRoute()
       await fetchRoutes()
@@ -507,7 +589,33 @@ const handleConfirmDelete = async () => {
   }
 }
 
-// Переключение табов и обновление карт
+// --- УМНЫЙ RESIZE OBSERVER (БЕЗ ПАРАЗИТНОГО ЦИКЛА) ---
+let splitResizeObserver: ResizeObserver | null = null
+let lastSplitWidth = 0
+
+const setupSafeResizeObserver = () => {
+  if (window.ResizeObserver) {
+    splitResizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const currentWidth = entry.contentRect.width
+        if (Math.abs(currentWidth - lastSplitWidth) > 4) {
+          lastSplitWidth = currentWidth
+          requestAnimationFrame(() => {
+            if (activeTab.value === 'stops' && stopsMapInstance) {
+              stopsMapInstance.container.fitToViewport()
+            } else if (activeTab.value === 'routes' && routesMapInstance) {
+              routesMapInstance.container.fitToViewport()
+            }
+          })
+        }
+      }
+    })
+
+    const rootElement = document.querySelector('.routes-admin-view')
+    if (rootElement) splitResizeObserver.observe(rootElement)
+  }
+}
+
 watch(activeTab, async (newTab) => {
   await nextTick()
   if (newTab === 'stops') {
@@ -523,9 +631,18 @@ onMounted(async () => {
   await fetchStops()
   await fetchRoutes()
   initStopsMap()
+  setupSafeResizeObserver()
+  window.addEventListener('resize', handleGlobalWindowResize)
 })
 
+const handleGlobalWindowResize = () => {
+  if (stopsMapInstance) stopsMapInstance.container.fitToViewport()
+  if (routesMapInstance) routesMapInstance.container.fitToViewport()
+}
+
 onUnmounted(() => {
+  window.removeEventListener('resize', handleGlobalWindowResize)
+  if (splitResizeObserver) splitResizeObserver.disconnect()
   if (stopsMapInstance) stopsMapInstance.destroy()
   if (routesMapInstance) routesMapInstance.destroy()
 })
@@ -542,7 +659,8 @@ onUnmounted(() => {
         </h1>
       </div>
       <p class="text-caption text-disabled font-mono mt-1">
-        УПРАВЛЕНИЕ ОСТАНОВКАМИ, ТРАЕКТОРИЯМИ И РАСПИСАНИЯМИ ДВИЖЕНИЯ</p>
+        УПРАВЛЕНИЕ ОСТАНОВКАМИ, ТРАЕКТОРИЯМИ И РАСПИСАНИЯМИ ДВИЖЕНИЯ
+      </p>
     </div>
 
     <!-- Вкладки управления -->
@@ -557,12 +675,12 @@ onUnmounted(() => {
       </v-tab>
     </v-tabs>
 
-    <!-- ВКЛАДКА 1: ОСТАНОВКИ -->
+    <!-- ВКЛАДКА 1: ОСТАНОВКИ (СО СЛАЙДЕРОМ И ЭЛАСТИЧНОЙ КАРТОЙ) -->
     <div v-show="activeTab === 'stops'">
-      <v-row>
-        <!-- Левая колонка: Таблица существующих остановок с действиями -->
-        <v-col cols="12" md="7">
-          <v-card class="admin-card pa-4" rounded="0">
+      <div ref="stopsSplitContainer" class="split-pane-wrapper">
+        <!-- Левая часть: Таблица существующих остановок -->
+        <div class="split-pane-left" :style="{ width: stopsSplitPercent + '%' }">
+          <v-card class="admin-card pa-4 fill-height" rounded="0">
             <div class="d-flex align-center justify-space-between mb-3">
               <span class="text-subtitle-2 font-mono font-weight-bold text-white">
                 РЕЕСТР ОСТАНОВОК
@@ -577,7 +695,8 @@ onUnmounted(() => {
                   color="#00E676"
                   hide-details
                   class="font-mono mr-2 search-input"
-                  style="width: 220px;"
+                  style="width: 200px;"
+                  autocomplete="off"
                 />
                 <v-btn
                   icon="mdi-refresh"
@@ -618,7 +737,7 @@ onUnmounted(() => {
               <template #item.lon="{ value }">
                 <span class="text-green-accent-3">{{ value }}</span>
               </template>
-              <!-- Кнопки действий над остановкой -->
+              <!-- Кнопки действий -->
               <template #item.actions="{ item }">
                 <div class="d-flex justify-center">
                   <v-btn
@@ -640,128 +759,146 @@ onUnmounted(() => {
               </template>
             </v-data-table>
           </v-card>
-        </v-col>
+        </div>
 
-        <!-- Правая колонка: Форма создания/редактирования остановки -->
-        <v-col cols="12" md="5">
-          <v-card class="admin-card pa-4" rounded="0">
-            <div class="d-flex align-center justify-space-between mb-3">
+        <!-- Слайдер-разделитель (Stops) -->
+        <div class="splitter-divider"
+          :class="{ 'splitter-active': isDraggingStopsSplit }"
+          @mousedown="startStopsSplitDrag"
+        >
+          <div class="splitter-handle" />
+        </div>
+
+        <!-- Правая часть: Форма создания/редактирования остановки (растягивается на всю высоту) -->
+        <div class="split-pane-right">
+          <v-card class="admin-card pa-4 stop-card-wrapper" rounded="0">
+            <div class="d-flex align-center justify-space-between mb-3 flex-shrink-0">
               <span class="text-subtitle-2 font-mono font-weight-bold text-white">
                 {{ editingStopId ? `РЕДАКТИРОВАНИЕ ОСТАНОВКИ #${editingStopId}` : 'НОВАЯ ОСТАНОВКА' }}
               </span>
-              <v-btn
-                v-if="editingStopId"
-                variant="text"
-                size="x-small"
-                color="#FFD600"
-                class="font-mono"
-                @click="cancelEditStop"
-              >
-                ОТМЕНА
-              </v-btn>
             </div>
 
-            <v-form @submit.prevent="handleSaveStop">
-              <div class="text-caption text-disabled font-mono mb-1">НАЗВАНИЕ ПУНКТА *</div>
-              <v-text-field
-                v-model="stopForm.name"
-                placeholder="например: Улица Кирова, д. 12"
-                variant="outlined"
-                density="compact"
-                color="#00E676"
-                class="font-mono mb-3 input-tactical"
-                hide-details
-              />
+            <v-form class="stop-form-wrapper" @submit.prevent="handleSaveStop">
+              <div class="flex-shrink-0">
+                <div class="text-caption text-disabled font-mono mb-1">НАЗВАНИЕ ПУНКТА *</div>
+                <v-text-field
+                  v-model="stopForm.name"
+                  placeholder="например: Улица Кирова, д. 12"
+                  variant="outlined"
+                  density="compact"
+                  color="#00E676"
+                  class="font-mono mb-3 input-tactical"
+                  hide-details
+                  autocomplete="off"
+                />
 
-              <v-row class="mb-2">
-                <v-col cols="6">
-                  <div class="text-caption text-disabled font-mono mb-1">ШИРОТА (LAT)</div>
-                  <v-text-field
-                    v-model.number="stopForm.lat"
-                    placeholder="55.xxxxxx"
-                    variant="outlined"
-                    density="compact"
-                    color="#00E676"
-                    readonly
-                    class="font-mono input-tactical"
-                    hide-details
-                  />
-                </v-col>
-                <v-col cols="6">
-                  <div class="text-caption text-disabled font-mono mb-1">ДОЛГОТА (LON)</div>
-                  <v-text-field
-                    v-model.number="stopForm.lon"
-                    placeholder="37.xxxxxx"
-                    variant="outlined"
-                    density="compact"
-                    color="#00E676"
-                    readonly
-                    class="font-mono input-tactical"
-                    hide-details
-                  />
-                </v-col>
-              </v-row>
+                <!-- Координаты: строго без ручного ввода курсором -->
+                <v-row class="mb-2">
+                  <v-col cols="6">
+                    <div class="text-caption text-disabled font-mono mb-1">ШИРОТА (LAT)</div>
+                    <v-text-field
+                      :model-value="stopForm.lat ?? ''"
+                      placeholder="Кликните на карте"
+                      variant="outlined"
+                      density="compact"
+                      color="#00E676"
+                      readonly
+                      tabindex="-1"
+                      class="font-mono input-tactical input-no-cursor"
+                      hide-details
+                    />
+                  </v-col>
+                  <v-col cols="6">
+                    <div class="text-caption text-disabled font-mono mb-1">ДОЛГОТА (LON)</div>
+                    <v-text-field
+                      :model-value="stopForm.lon ?? ''"
+                      placeholder="Кликните на карте"
+                      variant="outlined"
+                      density="compact"
+                      color="#00E676"
+                      readonly
+                      tabindex="-1"
+                      class="font-mono input-tactical input-no-cursor"
+                      hide-details
+                    />
+                  </v-col>
+                </v-row>
 
-              <!-- Карта-пикер -->
-              <div class="text-caption text-disabled font-mono mb-1 d-flex align-center justify-space-between">
-                <span>КЛИКНИТЕ ПО КАРТЕ ДЛЯ ВЫБОРА КООРДИНАТ:</span>
-                <span v-if="stopForm.lat" class="text-green-accent-3">ТОЧКА ВЫБРАНА</span>
+                <div class="text-caption text-disabled font-mono mb-1 d-flex align-center justify-space-between">
+                  <span>ВЫБЕРИТЕ ТОЧКУ НА КАРТЕ:</span>
+                  <span v-if="stopForm.lat" class="text-green-accent-3">ТОЧКА ВЫБРАНА</span>
+                </div>
               </div>
-              <div class="map-picker-container mb-4">
+
+              <!-- Растягивающаяся карта остановок -->
+              <div class="map-picker-container mb-3">
                 <div ref="stopsMapContainer" class="embedded-yandex-map" />
               </div>
 
-              <div class="d-flex">
+              <!-- Кнопки сохранения и отмены (ровно в ряд) -->
+              <div class="d-flex ga-2 flex-shrink-0">
                 <v-btn
                   v-if="editingStopId"
                   variant="outlined"
                   color="#FFD600"
                   rounded="0"
                   height="40"
-                  class="font-mono mr-2"
+                  class="font-mono px-4"
                   @click="cancelEditStop"
                 >
                   ОТМЕНА
                 </v-btn>
                 <v-btn
                   type="submit"
-                  block
                   :color="editingStopId ? '#29B6F6' : '#00E676'"
                   rounded="0"
                   height="40"
                   :loading="isSavingStop"
                   :disabled="!stopForm.name.trim() || !stopForm.lat"
-                  class="font-mono font-weight-bold text-black"
+                  class="font-mono font-weight-bold text-black flex-grow-1"
                 >
                   {{ editingStopId ? 'СОХРАНИТЬ ИЗМЕНЕНИЯ' : 'ДОБАВИТЬ ОСТАНОВКУ' }}
                 </v-btn>
               </div>
             </v-form>
           </v-card>
-        </v-col>
-      </v-row>
+        </div>
+      </div>
     </div>
 
-    <!-- ВКЛАДКА 2: МАРШРУТЫ И КОНСТРУКТОР -->
+    <!-- ВКЛАДКА 2: МАРШРУТЫ И КОНСТРУКТОР (СО СЛАЙДЕРОМ) -->
     <div v-show="activeTab === 'routes'">
-      <v-row>
-        <!-- Левая колонка: Реестр маршрутов + Параметры + Остановки -->
-        <v-col cols="12" md="5">
-          <!-- Реестр существующих маршрутов -->
+      <div ref="routesSplitContainer" class="split-pane-wrapper">
+        <!-- Левая часть: Реестр + Параметры + Остановки -->
+        <div class="split-pane-left" :style="{ width: routesSplitPercent + '%' }">
           <v-card class="admin-card pa-4 mb-4" rounded="0">
             <div class="d-flex align-center justify-space-between mb-2">
               <span class="text-subtitle-2 font-mono font-weight-bold text-white">
                 РЕЕСТР ДЕЙСТВУЮЩИХ МАРШРУТОВ
               </span>
-              <v-btn
-                icon="mdi-refresh"
-                variant="outlined"
-                size="x-small"
-                rounded="0"
-                :loading="isRoutesLoading"
-                class="border-subtle"
-                @click="fetchRoutes"
-              />
+              <div class="d-flex align-center">
+                <v-text-field
+                  v-model="routesSearch"
+                  prepend-inner-icon="mdi-magnify"
+                  placeholder="Поиск маршрута..."
+                  density="compact"
+                  variant="outlined"
+                  color="#00E676"
+                  hide-details
+                  class="font-mono mr-2 search-input"
+                  style="width: 170px;"
+                  autocomplete="off"
+                />
+                <v-btn
+                  icon="mdi-refresh"
+                  variant="outlined"
+                  size="x-small"
+                  rounded="0"
+                  :loading="isRoutesLoading"
+                  class="border-subtle"
+                  @click="fetchRoutes"
+                />
+              </div>
             </div>
 
             <v-data-table
@@ -787,7 +924,14 @@ onUnmounted(() => {
                 </span>
               </template>
               <template #item.transportType="{ value }">
-                <span class="text-capitalize text-disabled">{{ value }}</span>
+                <span class="text-capitalize text-disabled">
+                  {{
+                    value === 'bus' ? 'Автобус' :
+                    value === 'trolleybus' ? 'Троллейбус' :
+                    value === 'tram' ? 'Трамвай' :
+                    value === 'minibus' ? 'Маршрутка' : value
+                  }}
+                </span>
               </template>
               <template #item.actions="{ item }">
                 <div class="d-flex justify-center">
@@ -813,25 +957,15 @@ onUnmounted(() => {
 
           <!-- Параметры маршрута -->
           <v-card class="admin-card pa-4 mb-4" rounded="0">
-            <div class="d-flex align-center justify-space-between mb-3">
+            <div class="mb-3">
               <span class="text-subtitle-2 font-mono font-weight-bold text-white">
                 {{ editingRouteId ? `РЕДАКТИРОВАНИЕ МАРШРУТА #${editingRouteId}` : '1. ПАРАМЕТРЫ МАРШРУТА' }}
               </span>
-              <v-btn
-                v-if="editingRouteId"
-                variant="text"
-                size="x-small"
-                color="#FFD600"
-                class="font-mono"
-                @click="cancelEditRoute"
-              >
-                ОТМЕНА
-              </v-btn>
             </div>
 
             <v-row>
               <v-col cols="6">
-                <div class="text-caption text-disabled font-mono mb-1">НОМЕР МАРШРУТА *</div>
+                <div class="text-caption text-disabled font-mono mb-1">НОМЕР МАРШРУТА (МАКС. 10 СИМВ.) *</div>
                 <v-text-field
                   v-model="routeForm.pathNumber"
                   placeholder="52к"
@@ -840,6 +974,9 @@ onUnmounted(() => {
                   color="#00E676"
                   class="font-mono input-tactical"
                   hide-details
+                  maxlength="10"
+                  counter="10"
+                  autocomplete="off"
                 />
               </v-col>
               <v-col cols="6">
@@ -861,10 +998,13 @@ onUnmounted(() => {
 
           <!-- Цепочка остановок -->
           <v-card class="admin-card pa-4" rounded="0">
-            <div class="text-subtitle-2 font-mono font-weight-bold text-white mb-3 d-flex justify-space-between">
+            <div class="text-subtitle-2 font-mono font-weight-bold text-white mb-1 d-flex justify-space-between">
               <span>2. ПОСЛЕДОВАТЕЛЬНОСТЬ ОСТАНОВОК</span>
               <span class="text-green-accent-3 font-mono">ВЫБРАНО: {{ routeStopsList.length }}</span>
             </div>
+            <p class="text-caption text-disabled font-mono mb-3" style="font-size: 11px !important;">
+              Укажите остановки по порядку. Счётчик минут — это время в пути от 1-й (начальной) остановки (0 для старта).
+            </p>
 
             <div class="d-flex align-center mb-3">
               <v-autocomplete
@@ -877,19 +1017,24 @@ onUnmounted(() => {
                 variant="outlined"
                 color="#00E676"
                 hide-details
-                class="font-mono input-tactical mr-2"
+                class="font-mono input-tactical flex-grow-1 mr-2"
               />
-              <v-text-field
-                v-model.number="minutesFromStartToAdd"
-                type="number"
-                placeholder="Мин."
-                density="compact"
-                variant="outlined"
-                color="#00E676"
-                hide-details
-                style="max-width: 90px;"
-                class="font-mono input-tactical mr-2"
-              />
+              <v-tooltip text="Минуты в пути от первой (начальной) остановки маршрута" location="top">
+                <template #activator="{ props }">
+                  <v-text-field
+                    v-bind="props"
+                    v-model.number="minutesFromStartToAdd"
+                    type="number"
+                    placeholder="Мин."
+                    density="compact"
+                    variant="outlined"
+                    color="#00E676"
+                    hide-details
+                    style="max-width: 95px;"
+                    class="font-mono input-tactical mr-2"
+                  />
+                </template>
+              </v-tooltip>
               <v-btn
                 color="#00E676"
                 variant="tonal"
@@ -915,7 +1060,7 @@ onUnmounted(() => {
                   <span class="text-caption font-mono text-white line-clamp-1">{{ st.stopName }}</span>
                 </div>
                 <div class="d-flex align-center">
-                  <span class="text-caption font-mono text-disabled mr-3">+{{ st.minutesFromStart }} мин</span>
+                  <span class="text-caption font-mono text-disabled mr-3">+{{ st.minutesFromStart }} мин от 1-й ост.</span>
                   <v-btn
                     icon="mdi-trash-can-outline"
                     variant="text"
@@ -932,38 +1077,48 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <div class="d-flex">
+            <!-- Кнопки -->
+            <div class="d-flex ga-2">
               <v-btn
                 v-if="editingRouteId"
                 variant="outlined"
                 color="#FFD600"
                 rounded="0"
                 height="42"
-                class="font-mono mr-2"
+                class="font-mono px-5"
                 @click="cancelEditRoute"
               >
                 ОТМЕНА
               </v-btn>
               <v-btn
-                block
                 :color="editingRouteId ? '#29B6F6' : '#00E676'"
+                variant="flat"
                 rounded="0"
                 height="42"
                 :loading="isSavingRoute"
                 :disabled="!routeForm.pathNumber.trim() || routeStopsList.length < 2 || routePoints.length < 2"
-                class="font-mono font-weight-bold text-black"
+                class="font-mono font-weight-bold text-black flex-grow-1"
                 @click="handleSaveRoute"
               >
-                {{ editingRouteId ? 'СОХРАНИТЬ МАРШРУТ' : 'СОЗДАТЬ И ЗАПУСТИТЬ МАРШРУТ' }}
+                {{ editingRouteId ? 'СОХРАНИТЬ МАРШРУТ' : 'СОЗДАТЬ МАРШРУТ' }}
               </v-btn>
             </div>
           </v-card>
-        </v-col>
+        </div>
 
-        <!-- Правая колонка: Карта для прокладки траектории -->
-        <v-col cols="12" md="7">
-          <v-card class="admin-card pa-4" rounded="0">
-            <div class="d-flex align-center justify-space-between mb-3">
+        <!-- Слайдер-разделитель (Routes) -->
+        <div
+          class="splitter-divider"
+          :class="{ 'splitter-active': isDraggingRoutesSplit }"
+          @mousedown="startRoutesSplitDrag"
+        >
+          <div class="splitter-handle" />
+        </div>
+
+        <!-- Правая часть: Карта со строгой фиксацией flexbox-высоты -->
+        <div class="split-pane-right">
+          <v-card class="admin-card pa-4 map-card-wrapper" rounded="0">
+            <div class="d-flex align-center justify-space-between mb-3 map-card-header">
               <div>
                 <span class="text-subtitle-2 font-mono font-weight-bold text-white">
                   3. ТРАЕКТОРИЯ ЛИНИИ НА КАРТЕ
@@ -1005,10 +1160,9 @@ onUnmounted(() => {
 
             <div class="map-route-builder-container">
               <div ref="routesMapContainer" class="embedded-yandex-map" />
-            </div>
-          </v-card>
-        </v-col>
-      </v-row>
+            </div></v-card>
+        </div>
+      </div>
     </div>
 
     <!-- МОДАЛЬНОЕ ОКНО ПОДТВЕРЖДЕНИЯ УДАЛЕНИЯ -->
@@ -1031,8 +1185,8 @@ onUnmounted(() => {
         <div class="d-flex justify-end">
           <v-btn
             variant="text"
-            rounded="0"
             size="small"
+            rounded="0"
             class="font-mono mr-2"
             :disabled="deleteConfirmDialog.loading"
             @click="deleteConfirmDialog.open = false"
@@ -1042,8 +1196,8 @@ onUnmounted(() => {
           <v-btn
             color="#FF1744"
             variant="flat"
-            rounded="0"
             size="small"
+            rounded="0"
             class="font-mono font-weight-bold text-white px-4"
             :loading="deleteConfirmDialog.loading"
             @click="handleConfirmDelete"
@@ -1079,7 +1233,7 @@ onUnmounted(() => {
 .routes-admin-view {
   height: 100%;
   overflow-y: auto;
-  background-color:#0A0C10;
+  background-color: #0A0C10;
 }
 
 .brand-title {
@@ -1108,17 +1262,110 @@ onUnmounted(() => {
   background-color: #0E1116;
 }
 
-/* Контейнеры встроенных карт */
+/* Полный запрет курсора и клика по координатам */
+.input-no-cursor :deep(input) {
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+  user-select: none !important;
+}
+
+/* --- СЛАЙДЕРЫ-РАЗДЕЛИТЕЛИ (SPLIT-PANES) --- */
+.split-pane-wrapper {
+  display: flex;
+  width: 100%;
+  position: relative;
+  min-height: 620px;
+}
+
+.split-pane-left {
+  min-width: 320px;
+  flex-shrink: 0;
+}
+
+.split-pane-right {
+  flex-grow: 1;
+  min-width: 320px;
+  width: 0;
+  display: flex;
+}
+
+.splitter-divider {
+  width: 12px;
+  cursor: col-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  background-color: transparent;
+  transition: background-color 0.15s ease;
+  margin: 0 2px;
+  z-index: 10;
+}
+
+.splitter-divider:hover,
+.splitter-active {
+  background-color: rgba(0, 230, 118, 0.08);
+}
+
+.splitter-handle {
+  width: 4px;
+  height: 48px;
+  background-color: #30363D;
+  border-radius: 2px;
+  transition: all 0.2s ease;
+}
+
+.splitter-divider:hover .splitter-handle,
+.splitter-active .splitter-handle {
+  background-color: #00E676;
+  box-shadow: 0 0 8px rgba(0, 230, 118, 0.6);
+  height: 64px;
+}
+
+/* --- КАРТОЧКА И РАСТЯГИВАЮЩАЯСЯ КАРТА ОСТАНОВОК --- */
+.stop-card-wrapper {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  width: 100% !important;
+  overflow: hidden !important;
+}
+
+.stop-form-wrapper {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 0px !important;
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
 .map-picker-container {
-  height: 320px;
+  flex: 1 1 0px !important;
+  min-height: 360px;
+  height: 100% !important;
   width: 100%;
   border: 1px solid #30363D;
   position: relative;
   overflow: hidden;
 }
 
+/* --- КАРТОЧКА И РАСТЯГИВАЮЩАЯСЯ КАРТА МАРШРУТОВ --- */
+.map-card-wrapper {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  width: 100% !important;
+  overflow: hidden !important;
+}
+
+.map-card-header {
+  flex-shrink: 0;
+}
+
 .map-route-builder-container {
-  height: 600px;
+  flex: 1 1 0px !important;
+  min-height: 460px;
+  height: 100% !important;
   width: 100%;
   border: 1px solid #30363D;
   position: relative;
@@ -1136,7 +1383,7 @@ onUnmounted(() => {
   filter: invert(90%) hue-rotate(180%) contrast(90%) brightness(95%);
 }
 
-/* Скролл последовательности остановок */
+/* Скролл остановок */
 .route-stops-scroll-area {
   max-height: 220px;
   overflow-y: auto;

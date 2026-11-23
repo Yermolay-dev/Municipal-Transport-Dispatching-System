@@ -15,14 +15,13 @@ const dispatcher = ref({
   initials: userRole.value === 'Admin' ? 'АД' : 'ОД',
 })
 
-// Список навигации с флагом доступа
-// В <script setup lang="ts"> в MainLayout.vue:
+
 const rawMenuItems = [
   { to: '/', title: 'Карта маршрутов', icon: 'mdi-map-marker-path', requiresAdmin: false },
   { to: '/fleet', title: 'Управление парком', icon: 'mdi-bus-multiple', requiresAdmin: false },
   { to: '/audit', title: 'Журнал аудита', icon: 'mdi-clipboard-text-clock-outline', requiresAdmin: true },
-  // НОВЫЙ ПУНКТ МЕНЮ:
   { to: '/admin/routes', title: 'Маршруты и остановки', icon: 'mdi-routes', requiresAdmin: true },
+  { to: '/admin/staff', title: 'Персонал', icon: 'mdi-shield-account', requiresAdmin: true },
 ]
 
 // Фильтруем элементы меню на основе роли

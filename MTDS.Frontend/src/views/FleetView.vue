@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import apiClient from '../api'
 
 // --- ИНТЕРФЕЙСЫ ---
@@ -76,7 +76,6 @@ const fleetHeaders = computed(() => [
   { title: 'ДЕЙСТВИЯ', key: 'actions', align: 'center' as const, sortable: false, width: '180px' },
 ])
 
-// Перевод типов транспорта на русский
 const getTransportTypeLabel = (type: string): string => {
   const t = (type || '').toLowerCase()
   if (t.includes('bus') && !t.includes('mini') && !t.includes('electro')) return 'Автобус'
@@ -86,7 +85,6 @@ const getTransportTypeLabel = (type: string): string => {
   return type || 'Автобус'
 }
 
-// Словарь статусов на русском
 const statusDictionary: Record<string, { text: string; color: string }> = {
   active: { text: 'На маршруте', color: '#00E676' },
   on_route: { text: 'На маршруте', color: '#00E676' },
@@ -111,7 +109,7 @@ const getStatusInfo = (rawStatus: string): { text: string; color: string } => {
   if (norm.includes('broken') || norm.includes('ремонт')) return { text: 'В ремонте', color: '#FFD600' }
   if (norm.includes('garage') || norm.includes('парк')) return { text: 'В парке', color: '#8B949E' }
   if (norm.includes('active') || norm.includes('маршрут') || norm.includes('лини')) return { text: 'На маршруте', color: '#00E676' }
-  if (norm.includes('emergency') || norm.includes('авар') || norm === 'stop') return { text: 'Аварийная остановка', color: '#FF1744' }
+  if (norm.includes('emergency') || norm.includes('авар') || norm === 'stop') return { text: 'Аварийнаяостановка', color: '#FF1744' }
   if (norm.includes('return')) return { text: 'Возврат в парк', color: '#FFD600' }
 
   const clean = (rawStatus || 'Неизвестно').replace(/_/g, ' ')
@@ -123,7 +121,7 @@ const isCommandAllowed = (status: string): boolean => {
   return !norm.includes('garage') && !norm.includes('парк') && !norm.includes('broken')
 }
 
-// Загрузка подвижного состава (GET /park)
+// Загрузка парка (GET /park)
 const fetchFleet = async () => {
   try {
     isFleetLoading.value = true
@@ -227,6 +225,7 @@ const handleSaveQuickStatus = async () => {
 const isVehicleDialogOpen = ref<boolean>(false)
 const isEditingVehicle = ref<boolean>(false)
 const isSavingVehicle = ref<boolean>(false)
+
 const vehicleForm = ref({
   id: 0,
   numberPlate: '',
@@ -241,6 +240,26 @@ const vehicleTypeOptions = [
   { title: 'Маршрутка', value: 'minibus' },
   { title: 'Электробус', value: 'electrobus' },
 ]
+
+// Строгая валидация номера ТС (Формат РФ)
+const plateRegex = /^([АВЕКМНОРСТУХABEKMHOPCTYX]\d{3}[АВЕКМНОРСТУХABEKMHOPCTYX]{2}\d{2,3}|[АВЕКМНОРСТУХABEKMHOPCTYX]{2}\d{3}\d{2,3})$/i
+
+const plateRules = [
+  (v: string) => !!v?.trim() || 'Госномер обязателен',
+  (v: string) => plateRegex.test((v || '').replace(/\s/g, '')) || 'Формат РФ (А123АА777 или АА12377)',
+]
+
+const capacityRules = [
+  (v: number) => (v != null && v !== 0) || 'Укажите вместимость',
+  (v: number) => (Number(v) >= 5 && Number(v) <= 300) || 'От 5 до 300 пассажиров',
+]
+
+const isVehicleSubmitAllowed = computed(() => {
+  const p = vehicleForm.value.numberPlate.replace(/\s/g, '')
+  const validPlate = plateRegex.test(p)
+  const validCap = Number(vehicleForm.value.capacity) >= 5 && Number(vehicleForm.value.capacity) <= 300
+  return Boolean(validPlate && validCap && !isSavingVehicle.value)
+})
 
 const openCreateVehicleDialog = () => {
   isEditingVehicle.value = false
@@ -267,15 +286,12 @@ const openEditVehicleDialog = (unit: TransportUnit) => {
 }
 
 const handleSaveVehicle = async () => {
-  if (!vehicleForm.value.numberPlate.trim()) {
-    showNotice('Укажите госномер транспорта', true)
-    return
-  }
+  if (!isVehicleSubmitAllowed.value) return
 
   try {
     isSavingVehicle.value = true
     const payload = {
-      numberPlate: vehicleForm.value.numberPlate.trim().toUpperCase(),
+      numberPlate: vehicleForm.value.numberPlate.trim().toUpperCase().replace(/\s/g, ''),
       type: vehicleForm.value.type,
       capacity: Number(vehicleForm.value.capacity),
       status: vehicleForm.value.status,
@@ -331,7 +347,7 @@ const handleConfirmDeleteVehicle = async () => {
   }
 }
 
-// --- ЖИВАЯ ТЕЛЕМЕТРИЯ (GET /transport/active + /telemetry/optimal-speed) ---
+// --- ЖИВАЯ ТЕЛЕМЕТРИЯ ---
 const isTelemetryDialogOpen = ref<boolean>(false)
 const isTelemetryLoading = ref<boolean>(false)
 const telemetryTarget = ref<TransportUnit | null>(null)
@@ -395,7 +411,7 @@ const fetchTelemetryForVehicle = async (transportId: number) => {
   }
 }
 
-// --- МОДАЛКА ЭКСТРЕННОЙ КОМАНДЫ (СОХРАНЕНА) ---
+// --- МОДАЛКА ЭКСТРЕННОЙ КОМАНДЫ (БЕЗ ТЕНИ) ---
 const isEmergencyDialogOpen = ref<boolean>(false)
 const isSendingCommand = ref<boolean>(false)
 const selectedTransport = ref<TransportUnit | null>(null)
@@ -464,9 +480,10 @@ const handleSendEmergencyCommand = async () => {
 const shiftsList = ref<ShiftAssignment[]>([])
 const isShiftsLoading = ref<boolean>(false)
 const shiftFilter = ref<'active' | 'all'>('active')
+const shiftsSearch = ref<string>('')
 
 const shiftTableHeaders = [
-  { title: 'ID СМЕНЫ', key: 'id',align: 'start' as const, width: '90px' },
+  { title: 'ID СМЕНЫ', key: 'id', align: 'start' as const, width: '90px' },
   { title: 'МАРШРУТ', key: 'pathNumber', align: 'start' as const },
   { title: 'ТРАНСПОРТ', key: 'numberPlate', align: 'start' as const },
   { title: 'ВОДИТЕЛЬ', key: 'driverName', align: 'start' as const },
@@ -476,48 +493,85 @@ const shiftTableHeaders = [
 ]
 
 const formatShiftTime = (iso?: string | null) => {
-  if (!iso) return '—'
+  if (!iso || iso.startsWith('0001-01-01')) return '—'
   const d = new Date(iso)
   if (isNaN(d.getTime())) return iso
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${pad(d.getDate())}.${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+// Проверка активности смены: ShiftEnd null, 'null', пустой или 0001-01-01
+const isShiftActive = (s: any): boolean => {
+  const end = s.shiftEnd ?? s.ShiftEnd
+  if (!end) return true
+  if (end === 'null' || end === '') return true
+  if (typeof end === 'string' && end.startsWith('0001-01-01')) return true
+  return false
+}
+
 const fetchAssignments = async () => {
   try {
     isShiftsLoading.value = true
     const res = await apiClient.get('/assignments')
-    const raw = Array.isArray(res.data)
-  ? res.data
-  : res.data?.schedules || res.data?.items || res.data?.data || []
 
+    // Распаковываем массив строго из ключа schedules (с фоллбеками)
+    let raw: any[] = []
+    if (Array.isArray(res.data)) {
+      raw = res.data
+    } else if (res.data && Array.isArray(res.data.schedules)) {
+      raw = res.data.schedules
+    } else if (res.data && Array.isArray(res.data.Schedules)) {
+      raw = res.data.Schedules
+    } else if (res.data && Array.isArray(res.data.items)) {
+      raw = res.data.items
+    } else if (res.data && Array.isArray(res.data.data)) {
+      raw = res.data.data
+    }
 
-    shiftsList.value = raw.map((s: any) => ({
-      id: Number(s.id ?? s.Id),
-      driverId: String(s.driverId ?? s.DriverId ?? ''),
-      driverName: s.driverName || s.DriverName || 'Водитель СДМТ',
-      driverPhone: s.driverPhone || s.DriverPhone || '',
-      transportId: Number(s.transportId ?? s.TransportId ?? 0),
-      numberPlate: s.numberPlate || s.NumberPlate || '—',
-      routeId: Number(s.routeId ?? s.RouteId ?? 0),
-      pathNumber: s.pathNumber || s.PathNumber || (s.routeId ? `Маршрут #${s.routeId}` : '—'),
-      shiftStart: s.shiftStart || s.ShiftStart || '',
-      shiftEnd: s.shiftEnd || s.ShiftEnd || null,
-    }))
+    shiftsList.value = raw.map((s: any) => {
+      const endVal = s.shiftEnd ?? s.ShiftEnd
+      const isClosed = endVal && endVal !== 'null' && !String(endVal).startsWith('0001-01-01')
+
+      return {
+        id: Number(s.id ?? s.Id),
+        driverId: String(s.driverId ?? s.DriverId ?? ''),
+        driverName: s.driverName || s.DriverName || 'Водитель СДМТ',
+        driverPhone: s.driverPhone || s.DriverPhone || '',
+        transportId: Number(s.transportId ?? s.TransportId ?? 0),
+        numberPlate: s.numberPlate || s.NumberPlate || '—',
+        routeId: Number(s.routeId ?? s.RouteId ?? 0),
+        pathNumber: s.pathNumber || s.PathNumber || '—',
+        shiftStart: s.shiftStart || s.ShiftStart || '',
+        shiftEnd: isClosed ? endVal : null,
+      }
+    })
   } catch (err: any) {
     console.error('[ОРБИТА-СМЕНЫ] Ошибка загрузки смен:', err)
+    showNotice(err.response?.data?.message || 'Не удалось загрузить смены', true)
   } finally {
     isShiftsLoading.value = false
   }
 }
 
 const displayedShifts = computed(() => {
+  let list = shiftsList.value
   if (shiftFilter.value === 'active') {
-    return shiftsList.value.filter((s) => s.shiftEnd === null)
+    list = list.filter((s) => s.shiftEnd === null)
   }
-  return shiftsList.value
+  if (shiftsSearch.value.trim()) {
+    const q = shiftsSearch.value.toLowerCase().trim()
+    list = list.filter(
+      (s) =>
+        s.numberPlate?.toLowerCase().includes(q) ||
+        s.pathNumber?.toLowerCase().includes(q) ||
+        s.driverName?.toLowerCase().includes(q) ||
+        String(s.id).includes(q)
+    )
+  }
+  return list
 })
 
+// --- МОДАЛЬНОЕ ОКНО НАЗНАЧЕНИЯ НА МАРШРУТ ---
 const isAssignDialogOpen = ref<boolean>(false)
 const isAssigning = ref<boolean>(false)
 const routesActiveList = ref<RouteItem[]>([])
@@ -526,6 +580,55 @@ const assignForm = ref({
   driverId: null as string | null,
   transportId: null as number | null,
   routeId: null as number | null,
+})
+
+// 1. ТОЛЬКО СВОБОДНЫЕ ВОДИТЕЛИ (не на активной смене)
+const availableDriversForAssignment = computed(() => {
+  const activeDriverIds = new Set(
+    shiftsList.value.filter((s) => s.shiftEnd === null).map((s) => String(s.driverId).toLowerCase().trim())
+  )
+  return driversList.value.filter((d) => !activeDriverIds.has(String(d.id).toLowerCase().trim()))
+})
+
+// 2. ТОЛЬКО СВОБОДНЫЙ ТРАНСПОРТ (в депо и не на линии)
+const availableTransportForAssignment = computed(() => {
+  const activeTransportIds = new Set(
+    shiftsList.value.filter((s) => s.shiftEnd === null).map((s) => s.transportId)
+  )
+  return fleetData.value.filter(
+    (t) => t.status === 'in_garage' && !activeTransportIds.has(t.id)
+  )
+})
+
+// 3. МАРШРУТЫ СТРОГО ПОД ТИП ВЫБРАННОГО ТРАНСПОРТА
+const availableRoutesForAssignment = computed(() => {
+  if (!assignForm.value.transportId) return []
+  const selVehicle = fleetData.value.find((t) => t.id === assignForm.value.transportId)
+  if (!selVehicle) return []
+
+  return routesActiveList.value.filter(
+    (r) => (r.transportType || '').toLowerCase() === (selVehicle.type || '').toLowerCase()
+  )
+})
+
+// Автоматический сброс несовместимого маршрута при смене ТС
+watch(
+  () => assignForm.value.transportId,
+  (newId) => {
+    if (!newId) {
+      assignForm.value.routeId = null
+      return
+    }
+    const currentRoute = routesActiveList.value.find((r) => r.id === assignForm.value.routeId)
+    const selVehicle = fleetData.value.find((t) => t.id === newId)
+    if (currentRoute && selVehicle && currentRoute.transportType?.toLowerCase() !== selVehicle.type?.toLowerCase()) {
+      assignForm.value.routeId = null
+    }
+  }
+)
+
+const isAssignSubmitAllowed = computed(() => {
+  return Boolean(assignForm.value.driverId && assignForm.value.transportId && assignForm.value.routeId && !isAssigning.value)
 })
 
 const openAssignDialog = async () => {
@@ -541,18 +644,14 @@ const openAssignDialog = async () => {
       transportType: String(r.transportType || r.TransportType || 'bus'),
     }))
 
-    // Гарантируем свежий список водителей
-    await fetchDrivers()
+    await Promise.all([fetchDrivers(), fetchFleet(), fetchAssignments()])
   } catch (e) {
     console.error('Ошибка подготовки данных для назначения:', e)
   }
 }
 
 const handleAssignSubmit = async () => {
-  if (!assignForm.value.driverId || !assignForm.value.transportId || !assignForm.value.routeId) {
-    showNotice('Заполните все три поля назначения', true)
-    return
-  }
+  if (!isAssignSubmitAllowed.value) return
 
   try {
     isAssigning.value = true
@@ -599,7 +698,7 @@ const driverHeaders = computed(() => {
     { title: 'EMAIL', key: 'email', align: 'start' as const },
   ]
   if (isAdmin.value) {
-    base.push({ title: 'ДЕЙСТВИЯ', key: 'actions', align: 'start' as const })
+    base.push({ title: 'ДЕЙСТВИЯ', key: 'actions', align: 'start' as const})
   }
   return base
 })
@@ -627,10 +726,41 @@ const fetchDrivers = async () => {
   }
 }
 
-// Модальное окно водителя (создание/редактирование)
+// Экспорт водителей в CSV
+const exportDriversCsv = () => {
+  if (!driversList.value.length) {
+    showNotice('Нет данных для экспорта', true)
+    return
+  }
+
+  const csvHeaders = ['ID', 'ФИО', 'Телефон', 'Номер В/У', 'Email']
+  const csvRows = driversList.value.map((d) => [
+    d.id,
+    `"${d.fullName}"`,
+    `"${d.phoneNumber}"`,
+    `"${d.driverLicenseNumber}"`,
+    `"${d.email}"`,
+  ])
+
+  const csvString = '\uFEFF' + [csvHeaders.join(';'), ...csvRows.map((r) => r.join(';'))].join('\r\n')
+  const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.setAttribute('href', url)
+  link.setAttribute('download', `orbita_drivers_${new Date().toISOString().slice(0, 10)}.csv`)
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+
+  showNotice(`Экспорт водителей завершен: сохранено ${driversList.value.length} записей`)
+}
+
+// Модальное окно водителя
 const isDriverDialogOpen = ref<boolean>(false)
 const isEditingDriver = ref<boolean>(false)
 const isSavingDriver = ref<boolean>(false)
+const showDriverPassword = ref<boolean>(false)
 
 const driverForm = ref({
   id: '' as string | number,
@@ -640,6 +770,89 @@ const driverForm = ref({
   phoneNumber: '',
   driverLicenseNumber: '',
   password: '',
+})
+
+// Автоформат телефона: +7 (XXX) XXX-XX-XX
+const onDriverPhoneInput = (e: Event) => {
+  const input = e.target as HTMLInputElement
+  let digits = input.value.replace(/\D/g, '')
+
+  if (digits.startsWith('7') || digits.startsWith('8')) {
+    digits = digits.slice(1)
+  }
+  digits = digits.slice(0, 10)
+
+  let formatted = '+7'
+  if (digits.length > 0) formatted += ' (' + digits.slice(0, 3)
+  if (digits.length >= 3) formatted += ') ' + digits.slice(3, 6)
+  if (digits.length >= 6) formatted += '-' + digits.slice(6, 8)
+  if (digits.length >= 8) formatted += '-' + digits.slice(8, 10)
+
+  driverForm.value.phoneNumber = formatted
+}
+
+// Форматирование В/У с пробелами: XX XX XXXXXX (10 знаков)
+const onLicenseInput =(e: Event) => {
+  const input = e.target as HTMLInputElement
+  let raw = input.value.toUpperCase().replace(/[^A-ZА-Я0-9]/gi, '').slice(0, 10)
+
+  let formatted = raw
+  if (raw.length > 2 && raw.length <= 4) {
+    formatted = raw.slice(0, 2) + ' ' + raw.slice(2)
+  } else if (raw.length > 4) {
+    formatted = raw.slice(0, 2) + ' ' + raw.slice(2, 4) + ' ' + raw.slice(4)
+  }
+
+  driverForm.value.driverLicenseNumber = formatted
+}
+
+// Правила валидации для водителя
+const driverNameRules = [
+  (v: string) => !!v?.trim() || 'Имя обязательно',
+  (v: string) => (v?.trim().length >= 2 && v?.trim().length <= 50) || 'От 2 до 50 символов',
+  (v: string) => /^[а-яА-ЯёЁa-zA-Z\s-]+$/.test(v?.trim()) || 'Только буквы',
+]
+
+const driverSurNameRules = [
+  (v: string) => !!v?.trim() || 'Фамилия обязательна',
+  (v: string) => (v?.trim().length >= 2 && v?.trim().length <= 50) || 'От 2 до 50 символов',
+  (v: string) => /^[а-яА-ЯёЁa-zA-Z\s-]+$/.test(v?.trim()) || 'Только буквы',
+]
+
+const driverEmailRules = [
+  (v: string) => !!v?.trim() || 'Email обязателен',
+  (v: string) => /^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$/.test(v?.trim()) || 'Формат: driver@mtds.ru',
+]
+
+const driverPhoneRules = [
+  (v: string) => !!v?.trim() || 'Телефон обязателен',
+  (v: string) => /^\+7 \(\d{3}\) \d{3}-\d{2}-\d{2}$/.test(v?.trim()) || 'Формат: +7 (XXX) XXX-XX-XX',
+]
+
+const driverLicenseRules = [
+  (v: string) => !!v?.trim() || 'Номер В/У обязателен',
+  (v: string) => (v?.trim().replace(/\s/g, '').length === 10) || 'Формат: XX XX XXXXXX (10 знаков)',
+]
+
+const driverPasswordRules = [
+  (v: string) => (isEditingDriver.value || !!v) || 'Пароль обязателен при регистрации',
+  (v: string) => (!v || v.length >= 6) || 'Минимум 6 символов',
+]
+
+// Кнопка сохранения: при редактировании пустой пароль разрешен
+const isDriverSubmitAllowed = computed(() => {
+  const f = driverForm.value
+  const validName = f.name?.trim().length >= 2 && /^[а-яА-ЯёЁa-zA-Z\s-]+$/.test(f.name.trim())
+  const validSurName = f.surName?.trim().length >= 2 && /^[а-яА-ЯёЁa-zA-Z\s-]+$/.test(f.surName.trim())
+  const validEmail = /^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$/.test(f.email?.trim() || '')
+  const validPhone = /^\+7 \(\d{3}\) \d{3}-\d{2}-\d{2}$/.test(f.phoneNumber?.trim() || '')
+  const validLicense = (f.driverLicenseNumber || '').replace(/\s/g, '').length === 10
+
+  const validPass = isEditingDriver.value
+    ? (!f.password || f.password.length >= 6)
+    : (!!f.password && f.password.length >= 6)
+
+  return Boolean(validName && validSurName && validEmail && validPhone && validLicense && validPass && !isSavingDriver.value)
 })
 
 const openCreateDriverDialog = () => {
@@ -653,32 +866,33 @@ const openCreateDriverDialog = () => {
     driverLicenseNumber: '',
     password: '',
   }
+  showDriverPassword.value = false
   isDriverDialogOpen.value = true
 }
 
 const openEditDriverDialog = (driver: DriverItem) => {
   isEditingDriver.value = true
+
+  // Применяем маску к уже существующему В/У
+  let rawLic = (driver.driverLicenseNumber !== '—' ? driver.driverLicenseNumber || '' : '').replace(/[^A-ZА-Я0-9]/gi, '')
+  let formattedLic = rawLic
+  if (rawLic.length > 4) formattedLic = `${rawLic.slice(0, 2)} ${rawLic.slice(2, 4)} ${rawLic.slice(4, 10)}`
+
   driverForm.value = {
     id: driver.id,
     name: driver.name || '',
     surName: driver.surName || '',
     email: driver.email !== '—' ? driver.email || '' : '',
     phoneNumber: driver.phoneNumber !== '—' ? driver.phoneNumber || '' : '',
-    driverLicenseNumber: driver.driverLicenseNumber !== '—' ? driver.driverLicenseNumber || '' : '',
+    driverLicenseNumber: formattedLic,
     password: '',
   }
+  showDriverPassword.value = false
   isDriverDialogOpen.value = true
 }
 
 const handleSaveDriver = async () => {
-  if (!driverForm.value.name.trim() || !driverForm.value.surName.trim()) {
-    showNotice('Укажите имя и фамилию водителя', true)
-    return
-  }
-  if (!isEditingDriver.value && !driverForm.value.password.trim()) {
-    showNotice('Пароль обязателен при создании нового водителя', true)
-    return
-  }
+  if (!isDriverSubmitAllowed.value) return
 
   try {
     isSavingDriver.value = true
@@ -687,7 +901,7 @@ const handleSaveDriver = async () => {
       surName: driverForm.value.surName.trim(),
       email: driverForm.value.email.trim(),
       phoneNumber: driverForm.value.phoneNumber.trim(),
-      driverLicenseNumber: driverForm.value.driverLicenseNumber.trim(),
+      driverLicenseNumber: driverForm.value.driverLicenseNumber.replace(/\s/g, '').trim().toUpperCase(),
     }
 
     if (driverForm.value.password.trim()) {
@@ -696,10 +910,10 @@ const handleSaveDriver = async () => {
 
     if (isEditingDriver.value) {
       await apiClient.put(`/drivers/${driverForm.value.id}`, payload)
-      showNotice(`Данные водителя ${payload.surName} ${payload.name} обновлены`)
+      showNotice(`Водитель ${payload.surName} ${payload.name} обновлен`)
     } else {
       await apiClient.post('/drivers', payload)
-      showNotice(`Водитель ${payload.surName} ${payload.name} успешно зарегистрирован`)
+      showNotice(`Водитель ${payload.surName} ${payload.name} успешно добавлен`)
     }
 
     isDriverDialogOpen.value = false
@@ -744,7 +958,6 @@ const handleConfirmDeleteDriver = async () => {
   }
 }
 
-// Инициализация при монтировании
 onMounted(() => {
   fetchFleet()
   fetchAssignments()
@@ -755,34 +968,16 @@ onMounted(() => {
 <template>
   <div class="fleet-view pa-6">
     <!-- Шапка страницы -->
-    <div class="d-flex align-center justify-space-between mb-4">
-      <div>
-        <h1 class="text-h6 font-weight-black tracking-wider brand-title mb-1">
-          ДИСПЕТЧЕРСКИЙ ПУЛЬТ АВТОПАРКА
-        </h1>
-        <p class="text-caption text-disabled font-mono">
-          МОНИТОРИНГ ТЕХНИКИ, СМЕННЫХ ГРАФИКОВ И УЧЕТ ВОДИТЕЛЬСКОГО СОСТАВА
-        </p>
-      </div>
-
-      <!-- Фиксированная кнопка обновления -->
-      <v-tooltip text="Обновить все данные" location="left">
-        <template #activator="{ props }">
-          <v-btn
-            v-bind="props"
-            icon="mdi-refresh"
-            variant="outlined"
-            size="small"
-            rounded="0"
-            :loading="isFleetLoading || isShiftsLoading || isDriversLoading"
-            class="border-subtle"
-            @click="() => { fetchFleet(); fetchAssignments(); fetchDrivers(); }"
-          />
-        </template>
-      </v-tooltip>
+    <div class="mb-4">
+      <h1 class="text-h6 font-weight-black tracking-wider brand-title mb-1">
+        ДИСПЕТЧЕРСКИЙ ПУЛЬТ АВТОПАРКА
+      </h1>
+      <p class="text-caption text-disabled font-mono mb-0">
+        МОНИТОРИНГ ТЕХНИКИ, СМЕННЫХ ГРАФИКОВ И УЧЕТ ВОДИТЕЛЬСКОГО СОСТАВА
+      </p>
     </div>
 
-    <!-- Вкладки раздела (3 штуки) -->
+    <!-- Вкладки раздела -->
     <v-tabs v-model="activeTab" density="compact" color="#00E676" class="border-tabs mb-6 font-mono">
       <v-tab value="fleet" class="text-caption font-weight-bold">
         <v-icon icon="mdi-bus-multiple" size="18" class="mr-2" />
@@ -790,7 +985,7 @@ onMounted(() => {
       </v-tab>
       <v-tab value="shifts" class="text-caption font-weight-bold">
         <v-icon icon="mdi-clipboard-account-outline" size="18" class="mr-2" />
-        СМЕНЫ И МАРШРУТЫ ({{ shiftsList.filter(s => s.shiftEnd === null).length }} на линии)
+        СМЕНЫ И МАРШРУТЫ ({{ shiftsList.filter((s) => s.shiftEnd === null).length }} на линии)
       </v-tab>
       <v-tab value="drivers" class="text-caption font-weight-bold">
         <v-icon icon="mdi-card-account-details-outline" size="18" class="mr-2" />
@@ -801,17 +996,34 @@ onMounted(() => {
     <!-- ВКЛАДКА 1: ПОДВИЖНОЙ СОСТАВ -->
     <div v-show="activeTab === 'fleet'">
       <div class="d-flex align-center justify-space-between mb-3">
-        <v-text-field
-          v-model="fleetSearch"
-          prepend-inner-icon="mdi-magnify"
-          placeholder="Поиск по номеру, ID..."
-          density="compact"
-          variant="outlined"
-          color="#00E676"
-          hide-details
-          class="font-mono search-input"
-          style="max-width: 320px;"
-        />
+        <!-- Поиск + Кнопка обновить вплотную справа -->
+        <div class="d-flex align-center" style="max-width: 440px; width: 100%;">
+          <v-text-field
+            v-model="fleetSearch"
+            prepend-inner-icon="mdi-magnify"
+            placeholder="Поиск по номеру, ID..."
+            density="compact"
+            variant="outlined"
+            color="#00E676"
+            hide-details
+            class="font-mono search-input mr-2"
+            autocomplete="off"
+          />
+          <v-tooltip text="Обновить парк" location="top">
+            <template #activator="{ props }">
+              <v-btn
+                v-bind="props"
+                icon="mdi-refresh"
+                variant="outlined"
+                size="small"
+                rounded="0"
+                :loading="isFleetLoading"
+                class="border-subtle"
+                @click="fetchFleet"
+              />
+            </template>
+          </v-tooltip>
+        </div>
 
         <div class="d-flex align-center">
           <v-btn
@@ -822,7 +1034,8 @@ onMounted(() => {
             prepend-icon="mdi-file-delimited-outline"
             class="font-mono mr-3 border-subtle"
             @click="exportFleetCsv"
-          >ЭКСПОРТ В CSV
+          >
+            ЭКСПОРТ В CSV
           </v-btn>
 
           <v-btn
@@ -867,6 +1080,7 @@ onMounted(() => {
             <span>{{ value }} чел.</span>
           </template>
 
+          <!-- Кликабельный чип статуса -->
           <template #item.status="{ item, value }">
             <v-tooltip text="Нажмите для смены статуса" location="top">
               <template #activator="{ props }">
@@ -889,7 +1103,7 @@ onMounted(() => {
             </v-tooltip>
           </template>
 
-          <!-- Органичный раздел действий -->
+          <!-- Раздел действий -->
           <template #item.actions="{ item }">
             <div class="d-flex align-center justify-center action-buttons-group">
               <!-- Телеметрия -->
@@ -908,7 +1122,7 @@ onMounted(() => {
                 </template>
               </v-tooltip>
 
-              <!-- Боевая кнопка экстренного приказа -->
+              <!-- Боевая кнопка экстренного приказа (без квадратной тени) -->
               <v-tooltip
                 :text="isCommandAllowed((item as any).status) ? 'Подача экстренной команды' : 'Борт не на маршруте (команды заблокированы)'"
                 location="top"
@@ -928,7 +1142,8 @@ onMounted(() => {
                     >
                       <v-icon icon="mdi-radio-handheld" size="13" class="mr-1" />
                       <span>ПРИКАЗ</span>
-                    </v-btn></span>
+                    </v-btn>
+                  </span>
                 </template>
               </v-tooltip>
 
@@ -942,7 +1157,7 @@ onMounted(() => {
                       size="x-small"
                       variant="text"
                       color="#FFD600"
-                      class="action-mini-btn"
+                      class="action-mini-btn ml-1"
                       @click="openEditVehicleDialog(item as any)"
                     />
                   </template>
@@ -956,7 +1171,7 @@ onMounted(() => {
                       size="x-small"
                       variant="text"
                       color="#FF1744"
-                      class="action-mini-btn"
+                      class="action-mini-btn ml-1"
                       @click="openDeleteVehicleDialog(item as any)"
                     />
                   </template>
@@ -971,22 +1186,53 @@ onMounted(() => {
     <!-- ВКЛАДКА 2: СМЕНЫ И МАРШРУТЫ -->
     <div v-show="activeTab === 'shifts'">
       <div class="d-flex align-center justify-space-between mb-3">
-        <v-btn-toggle v-model="shiftFilter" mandatory density="compact" rounded="0" class="border-tabs font-mono">
-          <v-btn value="active" size="small" class="text-caption">АКТИВНЫЕ СМЕНЫ</v-btn>
-          <v-btn value="all" size="small" class="text-caption">ВСЯ ИСТОРИЯ</v-btn>
-        </v-btn-toggle>
+        <!-- Поиск + Кнопка обновить вплотную справа -->
+        <div class="d-flex align-center" style="max-width: 440px; width: 100%;">
+          <v-text-field
+            v-model="shiftsSearch"
+            prepend-inner-icon="mdi-magnify"
+            placeholder="Поиск по номеру, водителю, маршруту..."
+            density="compact"
+            variant="outlined"
+            color="#00E676"
+            hide-details
+            class="font-mono search-input mr-2"
+            autocomplete="off"
+          />
+          <v-tooltip text="Обновить смены" location="top">
+            <template #activator="{ props }">
+              <v-btn
+                v-bind="props"
+                icon="mdi-refresh"
+                variant="outlined"
+                size="small"
+                rounded="0"
+                :loading="isShiftsLoading"
+                class="border-subtle"
+                @click="() => { fetchAssignments(); fetchFleet(); }"
+              />
+            </template>
+          </v-tooltip>
+        </div>
 
-        <v-btn
-          color="#00E676"
-          variant="flat"
-          rounded="0"
-          size="small"
-          prepend-icon="mdi-account-plus-outline"
-          class="font-mono font-weight-bold text-black"
-          @click="openAssignDialog"
-        >
-          НАЗНАЧИТЬ НА МАРШРУТ
-        </v-btn>
+        <div class="d-flex align-center">
+          <v-btn-toggle v-model="shiftFilter" mandatory density="compact" rounded="0" class="border-tabs font-mono mr-3">
+            <v-btn value="active" size="small" class="text-caption">АКТИВНЫЕ СМЕНЫ</v-btn>
+            <v-btn value="all" size="small" class="text-caption">ВСЯ ИСТОРИЯ</v-btn>
+          </v-btn-toggle>
+
+          <v-btn
+            color="#00E676"
+            variant="flat"
+            rounded="0"
+            size="small"
+            prepend-icon="mdi-account-plus-outline"
+            class="font-mono font-weight-bold text-black"
+            @click="openAssignDialog"
+          >
+            НАЗНАЧИТЬ НА МАРШРУТ
+          </v-btn>
+        </div>
       </div>
 
       <v-card class="table-card" rounded="0">
@@ -1054,30 +1300,61 @@ onMounted(() => {
     <!-- ВКЛАДКА 3: ВОДИТЕЛИ -->
     <div v-show="activeTab === 'drivers'">
       <div class="d-flex align-center justify-space-between mb-3">
-        <v-text-field
-          v-model="driversSearch"
-          prepend-inner-icon="mdi-magnify"
-          placeholder="Поиск по ФИО, В/У, телефону..."
-          density="compact"
-          variant="outlined"
-          color="#00E676"
-          hide-details
-          class="font-mono search-input"
-          style="max-width: 320px;"
-        />
+        <!-- Поиск + Кнопка обновить вплотную справа -->
+        <div class="d-flex align-center" style="max-width: 440px; width: 100%;">
+          <v-text-field
+            v-model="driversSearch"
+            prepend-inner-icon="mdi-magnify"
+            placeholder="Поиск по ФИО, В/У, телефону..."
+            density="compact"
+            variant="outlined"
+            color="#00E676"
+            hide-details
+            class="font-mono search-input mr-2"
+            autocomplete="off"
+          />
+          <v-tooltip text="Обновить водителей" location="top">
+            <template #activator="{ props }">
+              <v-btn
+                v-bind="props"
+                icon="mdi-refresh"
+                variant="outlined"
+                size="small"
+                rounded="0"
+                :loading="isDriversLoading"
+                class="border-subtle"
+                @click="fetchDrivers"
+              />
+            </template>
+          </v-tooltip>
+        </div>
 
-        <v-btn
-          v-if="isAdmin"
-          color="#00E676"
-          variant="flat"
-          rounded="0"
-          size="small"
-          prepend-icon="mdi-account-plus"
-          class="font-mono font-weight-bold text-black"
-          @click="openCreateDriverDialog"
-        >
-          ДОБАВИТЬ ВОДИТЕЛЯ
-        </v-btn>
+        <div class="d-flex align-center">
+          <v-btn
+            variant="outlined"
+            color="#00E676"
+            size="small"
+            rounded="0"
+            prepend-icon="mdi-file-delimited-outline"
+            class="font-mono mr-3 border-subtle"
+            @click="exportDriversCsv"
+          >
+            ЭКСПОРТ В CSV
+          </v-btn>
+
+          <v-btn
+            v-if="isAdmin"
+            color="#00E676"
+            variant="flat"
+            rounded="0"
+            size="small"
+            prepend-icon="mdi-account-plus"
+            class="font-mono font-weight-bold text-black"
+            @click="openCreateDriverDialog"
+          >
+            ДОБАВИТЬ ВОДИТЕЛЯ
+          </v-btn>
+        </div>
       </div>
 
       <v-card class="table-card" rounded="0">
@@ -1109,32 +1386,46 @@ onMounted(() => {
 
           <template #item.actions="{ item }">
             <div class="d-flex align-center justify-center">
-              <v-btn
-                icon="mdi-pencil"
-                size="x-small"
-                variant="text"
-                color="#FFD600"
-                class="mr-1"
-                @click="openEditDriverDialog(item as any)"
-              />
-              <v-btn
-                icon="mdi-delete"
-                size="x-small"
-                variant="text"
-                color="#FF1744"
-                @click="openDeleteDriverDialog(item as any)"
-              />
+              <v-tooltip text="Редактировать" location="top">
+                <template #activator="{ props }">
+                  <v-btn
+                    v-bind="props"
+                    icon="mdi-pencil"
+                    size="x-small"
+                    variant="text"
+                    color="#FFD600"
+                    class="mr-1"
+                    @click="openEditDriverDialog(item as any)"
+                  />
+                </template>
+              </v-tooltip>
+
+              <v-tooltip text="Удалить" location="top">
+                <template #activator="{ props }">
+                  <v-btn
+                    v-bind="props"
+                    icon="mdi-delete"
+                    size="x-small"
+                    variant="text"
+                    color="#FF1744"
+                    @click="openDeleteDriverDialog(item as any)"
+                  />
+                </template>
+              </v-tooltip>
             </div>
           </template>
         </v-data-table>
       </v-card>
     </div>
 
-    <!-- ДИАЛОГ: БЫСТРАЯ СМЕНА СТАТУСА ТРАНСПОРТА -->
+    <!-- ДИАЛОГ 1: БЫСТРАЯ СМЕНА СТАТУСА ТРАНСПОРТА -->
     <v-dialog v-model="isStatusDialogOpen" max-width="420" persistent transition="fade-transition">
       <v-card class="admin-dialog-card pa-4" rounded="0">
-        <div class="text-subtitle-2 font-mono font-weight-bold text-white mb-2">
-          СМЕНА РАБОЧЕГО СТАТУСА • [{{ statusTargetVehicle?.numberPlate }}]
+        <div class="d-flex align-center justify-space-between mb-2">
+          <div class="text-subtitle-2 font-mono font-weight-bold text-white">
+            СМЕНА СТАТУСА • [{{ statusTargetVehicle?.numberPlate }}]
+          </div>
+          <v-btn icon="mdi-close" variant="text" size="x-small" @click="isStatusDialogOpen = false" />
         </div>
         <v-divider class="border-opacity-10 mb-4" />
 
@@ -1158,7 +1449,8 @@ onMounted(() => {
           </v-btn>
           <v-btn
             color="#00E676"
-            variant="flat"size="small"
+            variant="flat"
+            size="small"
             rounded="0"
             class="font-mono font-weight-bold text-black px-4"
             :loading="isSavingStatus"
@@ -1170,92 +1462,107 @@ onMounted(() => {
       </v-card>
     </v-dialog>
 
-    <!-- ДИАЛОГ: СОЗДАНИЕ / РЕДАКТИРОВАНИЕ ТРАНСПОРТА (ADMIN) -->
-    <v-dialog v-model="isVehicleDialogOpen" max-width="480" persistent transition="fade-transition">
+    <!-- ДИАЛОГ 2: СОЗДАНИЕ / РЕДАКТИРОВАНИЕ ТРАНСПОРТА (ВЫРАВНЕННЫЕ ПОЛЯ) -->
+    <v-dialog v-model="isVehicleDialogOpen" max-width="500" persistent transition="fade-transition">
       <v-card class="admin-dialog-card pa-4" rounded="0">
-        <div class="text-subtitle-2 font-mono font-weight-bold text-white mb-2">
-          {{ isEditingVehicle ? `РЕДАКТИРОВАНИЕ БОРТА #${vehicleForm.id}` : 'ДОБАВЛЕНИЕ НОВОГО БОРТА' }}
+        <div class="d-flex align-center justify-space-between mb-2">
+          <div class="text-subtitle-2 font-mono font-weight-bold text-white">
+            {{ isEditingVehicle ? `РЕДАКТИРОВАНИЕ БОРТА #${vehicleForm.id}` : 'ДОБАВЛЕНИЕ НОВОГО БОРТА' }}
+          </div>
+          <v-btn icon="mdi-close" variant="text" size="x-small" @click="isVehicleDialogOpen = false" />
         </div>
         <v-divider class="border-opacity-10 mb-4" />
 
-        <div class="text-caption text-disabled font-mono mb-1">ГОСНОМЕР (РЕГ. ЗНАК) *</div>
-        <v-text-field
-          v-model="vehicleForm.numberPlate"
-          placeholder="A123AA777"
-          variant="outlined"
-          density="compact"
-          color="#00E676"
-          class="font-mono mb-3 input-tactical"
-          hide-details
-        />
-
-        <v-row class="mb-3">
-          <v-col cols="6">
-            <div class="text-caption text-disabled font-mono mb-1">ТИП ТРАНСПОРТА</div>
-            <v-select
-              v-model="vehicleForm.type"
-              :items="vehicleTypeOptions"
-              item-title="title"
-              item-value="value"
-              variant="outlined"
-              density="compact"
-              color="#00E676"
-              class="font-mono input-tactical"
-              hide-details
-            />
-          </v-col>
-          <v-col cols="6">
-            <div class="text-caption text-disabled font-mono mb-1">ВМЕСТИМОСТЬ (ЧЕЛ.)</div>
-            <v-text-field
-              v-model.number="vehicleForm.capacity"
-              type="number"
-              variant="outlined"
-              density="compact"
-              color="#00E676"
-              class="font-mono input-tactical"
-              hide-details
-            />
-          </v-col>
-        </v-row>
-
-        <div class="text-caption text-disabled font-mono mb-1">РАБОЧИЙ СТАТУС</div>
-        <v-select
-          v-model="vehicleForm.status"
-          :items="quickStatusOptions"
-          item-title="title"
-          item-value="value"
-          variant="outlined"
-          density="compact"
-          color="#00E676"
-          class="font-mono mb-4 input-tactical"
-          hide-details
-        />
-
-        <div class="d-flex justify-end">
-          <v-btn variant="text" size="small" rounded="0" class="font-mono mr-2" @click="isVehicleDialogOpen = false">
-            ОТМЕНА
-          </v-btn>
-          <v-btn
+        <v-form autocomplete="off" @submit.prevent="handleSaveVehicle">
+          <div class="field-label-fixed text-caption text-disabled font-mono mb-1">ГОСНОМЕР ТРАНСПОРТА (ФОРМАТ РФ) *</div>
+          <v-text-field
+            v-model="vehicleForm.numberPlate"
+            placeholder="А123АА777 или АА12377"
+            variant="outlined"
+            density="compact"
             color="#00E676"
-            variant="flat"
-            size="small"
-            rounded="0"
-            class="font-mono font-weight-bold text-black px-4"
-            :loading="isSavingVehicle"
-            @click="handleSaveVehicle"
-          >
-            {{ isEditingVehicle ? 'СОХРАНИТЬ' : 'ДОБАВИТЬ' }}
-          </v-btn>
-        </div>
+            class="font-mono mb-2 input-tactical"
+            autocomplete="off"
+            hide-details="auto"
+            :rules="plateRules"
+            @input="(e: any) => vehicleForm.numberPlate = e.target.value.toUpperCase().replace(/\s/g, '')"
+          />
+
+          <!-- Выровненная строка: Тип и Вместимость -->
+          <v-row class="mb-2 align-start">
+            <v-col cols="6" class="py-1">
+              <div class="field-label-fixed text-caption text-disabled font-mono mb-1">ТИП ТРАНСПОРТА</div>
+              <v-select
+                v-model="vehicleForm.type"
+                :items="vehicleTypeOptions"
+                item-title="title"
+                item-value="value"
+                variant="outlined"
+                density="compact"
+                color="#00E676"
+                class="font-mono input-tactical"
+                hide-details="auto"
+              />
+            </v-col>
+            <v-col cols="6" class="py-1">
+              <div class="field-label-fixed text-caption text-disabled font-mono mb-1">ВМЕСТИМОСТЬ (ЧЕЛ.) *</div>
+              <v-text-field
+                v-model.number="vehicleForm.capacity"
+                type="number"
+                placeholder="50"
+                variant="outlined"
+                density="compact"
+                color="#00E676"
+                class="font-mono input-tactical"
+                hide-details="auto"
+                :rules="capacityRules"
+              />
+            </v-col>
+          </v-row>
+
+          <div class="field-label-fixed text-caption text-disabled font-mono mb-1">РАБОЧИЙ СТАТУС</div>
+          <v-select
+            v-model="vehicleForm.status"
+            :items="quickStatusOptions"
+            item-title="title"
+            item-value="value"
+            variant="outlined"
+            density="compact"
+            color="#00E676"
+            class="font-mono mb-4 input-tactical"
+            hide-details="auto"
+          />
+
+          <div class="d-flex justify-end mt-4">
+            <v-btn variant="text" size="small" rounded="0" class="font-mono mr-2" @click="isVehicleDialogOpen = false">
+              ОТМЕНА
+            </v-btn>
+            <v-btn
+              type="submit"
+              color="#00E676"
+              variant="flat"
+              size="small"
+              rounded="0"
+              class="font-mono font-weight-bold text-black px-4"
+              :loading="isSavingVehicle"
+              :disabled="!isVehicleSubmitAllowed"
+            >
+              {{ isEditingVehicle ? 'СОХРАНИТЬ' : 'ДОБАВИТЬ' }}
+            </v-btn>
+          </div>
+        </v-form>
       </v-card>
     </v-dialog>
 
-    <!-- ДИАЛОГ: УДАЛЕНИЕ ТРАНСПОРТА -->
+    <!-- ДИАЛОГ 3: УДАЛЕНИЕ ТРАНСПОРТА -->
     <v-dialog v-model="deleteVehicleConfirm.open" max-width="440" persistent transition="fade-transition">
       <v-card class="admin-dialog-card pa-5" rounded="0">
-        <div class="d-flex align-center mb-3">
-          <v-icon icon="mdi-alert-octagon-outline" color="#FF1744" size="26" class="mr-2" />
-          <div class="text-subtitle-2 font-weight-bold font-mono text-white">СПИСАНИЕ ТРАНСПОРТА</div>
+        <div class="d-flex align-center justify-space-between mb-3">
+          <div class="d-flex align-center">
+            <v-icon icon="mdi-alert-octagon-outline" color="#FF1744" size="26" class="mr-2" />
+            <div class="text-subtitle-2 font-weight-bold font-mono text-white">СПИСАНИЕ ТРАНСПОРТА</div>
+          </div>
+          <v-btn icon="mdi-close" variant="text" size="x-small" @click="deleteVehicleConfirm.open = false" />
         </div>
         <v-divider class="border-opacity-10 mb-4" />
         <div class="text-body-2 font-mono text-grey-lighten-2 mb-5">
@@ -1281,144 +1588,7 @@ onMounted(() => {
       </v-card>
     </v-dialog>
 
-    <!-- ДИАЛОГ: СОЗДАНИЕ / РЕДАКТИРОВАНИЕ ВОДИТЕЛЯ -->
-    <v-dialog v-model="isDriverDialogOpen" max-width="500" persistent transition="fade-transition">
-      <v-card class="admin-dialog-card pa-4" rounded="0">
-        <div class="text-subtitle-2 font-mono font-weight-bold text-white mb-2">
-          {{ isEditingDriver ? `РЕДАКТИРОВАНИЕ ВОДИТЕЛЯ` : 'РЕГИСТРАЦИЯ ВОДИТЕЛЯ' }}
-        </div>
-        <v-divider class="border-opacity-10 mb-4" />
-
-        <v-row class="mb-1">
-          <v-col cols="6">
-            <div class="text-caption text-disabled font-mono mb-1">ИМЯ *</div>
-            <v-text-field
-              v-model="driverForm.name"
-              placeholder="Иван"
-              variant="outlined"
-              density="compact"
-              color="#00E676"
-              class="font-mono input-tactical"
-              hide-details
-            />
-          </v-col>
-          <v-col cols="6">
-            <div class="text-caption text-disabled font-mono mb-1">ФАМИЛИЯ *</div>
-            <v-text-field
-              v-model="driverForm.surName"
-              placeholder="Иванов"
-              variant="outlined"
-              density="compact"
-              color="#00E676"
-              class="font-mono input-tactical"
-              hide-details
-            />
-          </v-col>
-        </v-row>
-
-        <div class="text-caption text-disabled font-mono mb-1">EMAIL *</div>
-        <v-text-field
-          v-model="driverForm.email"
-          placeholder="driver@mtds.ru"
-          variant="outlined"
-          density="compact"
-          color="#00E676"
-          class="font-mono mb-3 input-tactical"
-          hide-details
-        />
-
-        <v-row class="mb-1">
-          <v-col cols="6">
-            <div class="text-caption text-disabled font-mono mb-1">ТЕЛЕФОН</div>
-            <v-text-field
-              v-model="driverForm.phoneNumber"
-              placeholder="+7 (999) 000-00-00"
-              variant="outlined"
-              density="compact"
-              color="#00E676"
-              class="font-mono input-tactical"
-              hide-details
-            />
-          </v-col>
-          <v-col cols="6">
-            <div class="text-caption text-disabled font-mono mb-1">НОМЕР В/У *</div>
-            <v-text-field
-              v-model="driverForm.driverLicenseNumber"
-              placeholder="50 12 345678"
-              variant="outlined"
-              density="compact"
-              color="#00E676"
-              class="font-mono input-tactical"
-              hide-details
-            />
-          </v-col>
-        </v-row>
-
-        <div class="text-caption text-disabled font-mono mb-1 mt-2">
-          ПАРОЛЬ {{ isEditingDriver ? '(Оставьте пустым, чтобы не менять)' : '*' }}
-        </div>
-        <v-text-field
-          v-model="driverForm.password"
-          type="password"
-          placeholder="••••••••••••"
-          variant="outlined"
-          density="compact"
-          color="#00E676"
-          class="font-mono mb-4 input-tactical"
-          hide-details
-        />
-
-        <div class="d-flex justify-end">
-          <v-btn variant="text" size="small" rounded="0" class="font-mono mr-2" @click="isDriverDialogOpen = false">
-            ОТМЕНА
-          </v-btn>
-          <v-btn
-            color="#00E676"
-            variant="flat"
-            size="small"
-            rounded="0"
-            class="font-mono font-weight-bold text-black px-4"
-            :loading="isSavingDriver"
-            @click="handleSaveDriver"
-          >
-            {{ isEditingDriver ? 'СОХРАНИТЬ' : 'ЗАРЕГИСТРИРОВАТЬ' }}
-          </v-btn>
-        </div>
-      </v-card>
-    </v-dialog>
-
-    <!-- ДИАЛОГ: УДАЛЕНИЕ ВОДИТЕЛЯ -->
-    <v-dialog v-model="deleteDriverConfirm.open" max-width="440" persistent transition="fade-transition">
-      <v-card class="admin-dialog-card pa-5" rounded="0">
-        <div class="d-flex align-center mb-3">
-          <v-icon icon="mdi-alert-octagon-outline" color="#FF1744" size="26" class="mr-2" />
-          <div class="text-subtitle-2 font-weight-bold font-mono text-white">УДАЛЕНИЕ ВОДИТЕЛЯ</div>
-        </div>
-        <v-divider class="border-opacity-10 mb-4" />
-        <div class="text-body-2 font-mono text-grey-lighten-2 mb-5">
-          Вы уверены, что хотите удалить водителя
-          <span class="text-red-accent-2 font-weight-bold">"{{ deleteDriverConfirm.name }}"</span>?
-        </div>
-        <div class="d-flex justify-end">
-          <v-btn variant="text" size="small" rounded="0" class="font-mono mr-2" @click="deleteDriverConfirm.open = false">
-            ОТМЕНА
-          </v-btn>
-          <v-btn
-            color="#FF1744"
-            variant="flat"
-            size="small"
-            rounded="0"
-            class="font-mono font-weight-bold text-white px-4"
-            :loading="deleteDriverConfirm.loading"
-            @click="handleConfirmDeleteDriver"
-          >
-            УДАЛИТЬ
-          </v-btn>
-        </div>
-      </v-card>
-    </v-dialog>
-
-    <!-- ДИАЛОГ: ЖИВАЯ ТЕЛЕМЕТРИЯ -->
+    <!-- ДИАЛОГ 4: ЖИВАЯ ТЕЛЕМЕТРИЯ -->
     <v-dialog v-model="isTelemetryDialogOpen" max-width="460" transition="fade-transition">
       <v-card class="telemetry-dialog-card pa-5" rounded="0">
         <div class="d-flex align-center justify-space-between mb-2">
@@ -1469,7 +1639,9 @@ onMounted(() => {
             <div class="text-body-2 font-weight-bold text-grey-lighten-1">
               {{ telemetryData.scheduleStatus || 'В рамках нормативного интервала' }}
             </div>
-          </div><v-btn
+          </div>
+
+          <v-btn
             block
             variant="outlined"
             color="#29B6F6"
@@ -1485,24 +1657,30 @@ onMounted(() => {
 
         <div v-else class="text-center py-6 font-mono text-disabled">
           <v-icon icon="mdi-signal-off" size="36" class="mb-2" />
-          <div class="text-body-2">Нет активного сигнала GPS от трекера</div>
+          <div class="text-body-2">Нет активногосигнала GPS от трекера</div>
           <div class="text-caption mt-1">Борт не передает данные координат в реальном времени</div>
         </div>
       </v-card>
     </v-dialog>
 
-    <!-- ДИАЛОГ: НАЗНАЧЕНИЕ НА МАРШРУТ (СМЕНЫ) -->
+    <!-- ДИАЛОГ 5: НАЗНАЧЕНИЕ НА МАРШРУТ (УМНАЯ ФИЛЬТРАЦИЯ + КРЕСТИК) -->
     <v-dialog v-model="isAssignDialogOpen" max-width="520" persistent transition="fade-transition">
       <v-card class="admin-dialog-card pa-4" rounded="0">
-        <div class="text-subtitle-2 font-mono font-weight-bold text-white mb-2">
-          ОТКРЫТИЕ СМЕНЫ: ВЫПУСК БОРТА НА ЛИНИЮ
+        <div class="d-flex align-center justify-space-between mb-2">
+          <div class="text-subtitle-2 font-mono font-weight-bold text-white">
+            ОТКРЫТИЕ СМЕНЫ: ВЫПУСК БОРТА НА ЛИНИЮ
+          </div>
+          <v-btn icon="mdi-close" variant="text" size="x-small" @click="isAssignDialogOpen = false" />
         </div>
         <v-divider class="border-opacity-10 mb-4" />
 
-        <div class="text-caption text-disabled font-mono mb-1">1. ВОДИТЕЛЬ *</div>
+        <!-- 1. Свободные водители -->
+        <div class="text-caption text-disabled font-mono mb-1">
+          1. СВОБОДНЫЙ ВОДИТЕЛЬ (НЕ НА ЛИНИИ) *
+        </div>
         <v-autocomplete
           v-model="assignForm.driverId"
-          :items="driversList"
+          :items="availableDriversForAssignment"
           item-title="fullName"
           item-value="id"
           placeholder="Выберите водителя..."
@@ -1510,34 +1688,44 @@ onMounted(() => {
           density="compact"
           color="#00E676"
           class="font-mono mb-3 input-tactical"
+          no-data-text="Все водители сейчас на рейсе"
           hide-details
         />
 
-        <div class="text-caption text-disabled font-mono mb-1">2. ТРАНСПОРТ (БОРТ) *</div>
+        <!-- 2. Свободный транспорт в парке -->
+        <div class="text-caption text-disabled font-mono mb-1">
+          2. СВОБОДНЫЙ БОРТ В ДЕПО *
+        </div>
         <v-autocomplete
           v-model="assignForm.transportId"
-          :items="fleetData"
-          :item-title="(item) => `${item.numberPlate} (${getStatusInfo(item.status).text})`"
+          :items="availableTransportForAssignment"
+          :item-title="(item) => `${item.numberPlate} (${getTransportTypeLabel(item.type)})`"
           item-value="id"
-          placeholder="Выберите транспорт..."
+          placeholder="Выберите свободный транспорт..."
           variant="outlined"
           density="compact"
           color="#00E676"
           class="font-mono mb-3 input-tactical"
+          no-data-text="Нет свободного транспорта в депо"
           hide-details
         />
 
-        <div class="text-caption text-disabled font-mono mb-1">3. МАРШРУТ СЛЕДОВАНИЯ *</div>
+        <!-- 3. Маршрут под выбранный тип транспорта -->
+        <div class="text-caption text-disabled font-mono mb-1">
+          3. МАРШРУТ (ФИЛЬТР ПО ТИПУ ТС) *
+        </div>
         <v-autocomplete
           v-model="assignForm.routeId"
-          :items="routesActiveList"
+          :items="availableRoutesForAssignment"
           :item-title="(item) => `Маршрут № ${item.pathId.toUpperCase()} (${getTransportTypeLabel(item.transportType)})`"
           item-value="id"
-          placeholder="Выберите маршрут..."
+          :disabled="!assignForm.transportId"
+          :placeholder="assignForm.transportId ? 'Выберите совместимый маршрут...' : 'Сначала выберите свободный борт...'"
           variant="outlined"
           density="compact"
           color="#00E676"
           class="font-mono mb-4 input-tactical"
+          no-data-text="Нет доступных маршрутов для выбранного типа ТС"
           hide-details
         />
 
@@ -1552,6 +1740,7 @@ onMounted(() => {
             rounded="0"
             class="font-mono font-weight-bold text-black px-4"
             :loading="isAssigning"
+            :disabled="!isAssignSubmitAllowed"
             @click="handleAssignSubmit"
           >
             ВЫПУСТИТЬ НА ЛИНИЮ
@@ -1560,7 +1749,171 @@ onMounted(() => {
       </v-card>
     </v-dialog>
 
-    <!-- ДИАЛОГ: ЭКСТРЕННАЯ КОМАНДА -->
+    <!-- ДИАЛОГ 6: СОЗДАНИЕ / РЕДАКТИРОВАНИЕ ВОДИТЕЛЯ (ВЫРОВНЕННЫЕ ПОЛЯ) -->
+    <v-dialog v-model="isDriverDialogOpen" max-width="520" persistent transition="fade-transition">
+      <v-card class="admin-dialog-card pa-4" rounded="0">
+        <div class="d-flex align-center justify-space-between mb-2">
+          <div class="text-subtitle-2 font-mono font-weight-bold text-white">
+            {{ isEditingDriver ? 'РЕДАКТИРОВАНИЕ ВОДИТЕЛЯ' : 'РЕГИСТРАЦИЯ ВОДИТЕЛЯ' }}
+          </div>
+          <v-btn icon="mdi-close" variant="text" size="x-small" @click="isDriverDialogOpen = false" />
+        </div>
+        <v-divider class="border-opacity-10 mb-4" />
+
+        <v-form autocomplete="off" @submit.prevent="handleSaveDriver">
+          <v-row class="mb-1 align-start">
+            <v-col cols="6" class="py-1">
+              <div class="field-label-fixed text-caption text-disabled font-mono mb-1">ИМЯ *</div>
+              <v-text-field
+                v-model="driverForm.name"
+                placeholder="Иван"
+                variant="outlined"
+                density="compact"
+                color="#00E676"
+                class="font-mono input-tactical"
+                autocomplete="off"
+                hide-details="auto"
+                :rules="driverNameRules"
+              />
+            </v-col>
+            <v-col cols="6" class="py-1">
+              <div class="field-label-fixed text-caption text-disabled font-mono mb-1">ФАМИЛИЯ *</div>
+              <v-text-field
+                v-model="driverForm.surName"
+                placeholder="Иванов"
+                variant="outlined"
+                density="compact"
+                color="#00E676"
+                class="font-mono input-tactical"
+                autocomplete="off"
+                hide-details="auto"
+                :rules="driverSurNameRules"
+              />
+            </v-col>
+          </v-row>
+
+          <div class="field-label-fixed text-caption text-disabled font-mono mb-1 mt-1">СЛУЖЕБНЫЙ EMAIL *</div>
+          <v-text-field
+            v-model="driverForm.email"
+            placeholder="driver@mtds.ru"
+            variant="outlined"
+            density="compact"
+            color="#00E676"
+            class="font-mono mb-2 input-tactical"
+            autocomplete="off"
+            hide-details="auto"
+            :rules="driverEmailRules"
+          />
+
+          <!-- Выровненная строка: Телефон и В/У -->
+          <v-row class="mb-1 align-start">
+            <v-col cols="6" class="py-1">
+              <div class="field-label-fixed text-caption text-disabled font-mono mb-1">ТЕЛЕФОН СВЯЗИ *</div>
+              <v-text-field
+                :model-value="driverForm.phoneNumber"
+                placeholder="+7 (999) 000-00-00"
+                variant="outlined"
+                density="compact"
+                color="#00E676"
+                class="font-mono input-tactical"
+                autocomplete="off"
+                hide-details="auto"
+                :rules="driverPhoneRules"
+                @input="onDriverPhoneInput"
+              />
+            </v-col>
+            <v-col cols="6" class="py-1">
+              <div class="field-label-fixed text-caption text-disabled font-mono mb-1">НОМЕР В/У (XX XX XXXXXX) *</div>
+              <v-text-field
+                :model-value="driverForm.driverLicenseNumber"
+                placeholder="50 12 345678"
+                variant="outlined"
+                density="compact"
+                color="#00E676"
+                class="font-mono input-tactical"
+                autocomplete="off"
+                maxlength="12"
+                hide-details="auto"
+                :rules="driverLicenseRules"
+                @input="onLicenseInput"
+              />
+            </v-col>
+          </v-row>
+
+          <div class="field-label-fixed text-caption text-disabled font-mono mb-1 mt-2">
+            ПАРОЛЬ {{ isEditingDriver ? '(Оставьте пустым, чтобы не менять)' : '*' }}
+          </div>
+          <v-text-field
+            v-model="driverForm.password"
+            :type="showDriverPassword ? 'text' : 'password'"
+            placeholder="••••••••••••"
+            :append-inner-icon="showDriverPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+            variant="outlined"
+            density="compact"
+            color="#00E676"
+            class="font-mono mb-4 input-tactical"
+            autocomplete="new-password"
+            hide-details="auto"
+            :rules="driverPasswordRules"
+            @click:append-inner="showDriverPassword = !showDriverPassword"
+          />
+
+          <div class="d-flex justify-end mt-4">
+            <v-btn variant="text" size="small" rounded="0" class="font-mono mr-2" @click="isDriverDialogOpen = false">
+              ОТМЕНА
+            </v-btn>
+            <v-btn
+              type="submit"
+              color="#00E676"
+              variant="flat"
+              size="small"
+              rounded="0"
+              class="font-mono font-weight-bold text-black px-4"
+              :loading="isSavingDriver"
+              :disabled="!isDriverSubmitAllowed"
+            >
+              {{ isEditingDriver ? 'СОХРАНИТЬ' : 'ЗАРЕГИСТРИРОВАТЬ' }}
+            </v-btn>
+          </div>
+        </v-form>
+      </v-card>
+    </v-dialog>
+
+    <!-- ДИАЛОГ 7: УДАЛЕНИЕ ВОДИТЕЛЯ -->
+    <v-dialog v-model="deleteDriverConfirm.open" max-width="440" persistent transition="fade-transition">
+      <v-card class="admin-dialog-card pa-5" rounded="0">
+        <div class="d-flex align-center justify-space-between mb-3">
+          <div class="d-flex align-center">
+            <v-icon icon="mdi-alert-octagon-outline" color="#FF1744" size="26" class="mr-2" />
+            <div class="text-subtitle-2 font-weight-bold font-mono text-white">УДАЛЕНИЕ ВОДИТЕЛЯ</div>
+          </div>
+          <v-btn icon="mdi-close" variant="text" size="x-small" @click="deleteDriverConfirm.open = false" />
+        </div>
+        <v-divider class="border-opacity-10 mb-4" />
+        <div class="text-body-2 font-mono text-grey-lighten-2 mb-5">
+          Вы уверены, что хотите удалить водителя
+          <span class="text-red-accent-2 font-weight-bold">"{{ deleteDriverConfirm.name }}"</span>?
+        </div>
+        <div class="d-flex justify-end">
+          <v-btn variant="text" size="small" rounded="0" class="font-mono mr-2" @click="deleteDriverConfirm.open = false">
+            ОТМЕНА
+          </v-btn>
+          <v-btn
+            color="#FF1744"
+            variant="flat"
+            size="small"
+            rounded="0"
+            class="font-mono font-weight-bold text-white px-4"
+            :loading="deleteDriverConfirm.loading"
+            @click="handleConfirmDeleteDriver"
+          >
+            УДАЛИТЬ
+          </v-btn>
+        </div>
+      </v-card>
+    </v-dialog>
+
+    <!-- ДИАЛОГ 8: ЭКСТРЕННАЯ КОМАНДА -->
     <v-dialog v-model="isEmergencyDialogOpen" max-width="520" persistent transition="fade-transition">
       <v-card class="emergency-dialog-card" rounded="0">
         <div class="emergency-header pa-4 d-flex align-center justify-space-between">
@@ -1687,14 +2040,22 @@ onMounted(() => {
   letter-spacing: 0.04em;
 }
 
-/* Действия в таблице: аккуратная компактная группа */
+/* Фиксированная высота меток полей для идеального выравнивания по горизонтали */
+.field-label-fixed {
+  min-height: 20px;
+  line-height: 20px;
+}
+
+/* Действия в таблице */
 .action-buttons-group {
-  gap: 4px;
+  gap: 2px;
 }
 .action-mini-btn {
   width: 26px !important;
   height: 26px !important;
 }
+
+/* Кнопка приказа: тень полностью убрана */
 .action-command-pill {
   height: 24px !important;
   padding: 0 8px !important;
@@ -1711,7 +2072,7 @@ onMounted(() => {
 .action-command-active:hover {
   background-color: #FF1744 !important;
   color: #FFFFFF !important;
-  box-shadow: 00 10px rgba(255, 23, 68, 0.5);
+  box-shadow: none !important; /* УБРАНА ТЕНЬ */
 }
 .action-command-disabled {
   background-color: rgba(255, 255, 255, 0.03) !important;
@@ -1720,7 +2081,7 @@ onMounted(() => {
   opacity: 0.5;
 }
 
-/* Модальные окна */
+/* Карточки модальных окон */
 .admin-dialog-card,
 .telemetry-dialog-card {
   background-color: #161B22 !important;

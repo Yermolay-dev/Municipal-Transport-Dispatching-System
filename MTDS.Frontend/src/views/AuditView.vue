@@ -37,7 +37,7 @@ const showNotice = (text: string, isError: boolean = false) => {
   }
 }
 
-// Колонки таблицы
+// Колонки таблицы с четким разделением Команды и Причины
 const headers = [
   { title: 'ВРЕМЯ СОБЫТИЯ', key: 'createdAt', align: 'start' as const },
   { title: 'ОПЕРАТОР / ДИСПЕТЧЕР', key: 'dispatcher', align: 'start' as const },
@@ -47,6 +47,7 @@ const headers = [
   { title: 'ID', key: 'id', align: 'end' as const },
 ]
 
+// Словарь расшифровки кодов команд в человекочитаемые русские названия
 const commandCodeDictionary: Record<string, { title: string; color: string }> = {
   STOP: { title: 'Экстренная остановка (блокировка)', color: '#FF1744' },
   RETURN_TO_PARK: { title: 'Возврат в парк (сход с линии)', color: '#FFD600' },
@@ -72,6 +73,7 @@ const formatDateTime = (dateStr: string) => {
   return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`
 }
 
+// Разбор записи аудита на правильную команду и причину
 const parseActionField = (item: any): { commandName: string; commandColor: string; reasonText: string } => {
   const rawAction = String(item.action || item.Action || '').trim()
   const explicitCommand = String(item.command || item.Command || item.actionType || item.ActionType || '').trim()
@@ -103,14 +105,14 @@ const parseActionField = (item: any): { commandName: string; commandColor: strin
     return {
       commandName: firstPart || 'Диспетчерский приказ',
       commandColor: '#29B6F6',
-      reasonText: secondPart || '—',
+      reasonText: secondPart ||'—',
     }
   }
 
   return {
     commandName: rawAction || 'Системное событие',
     commandColor: rawAction.includes('ЭКСТРЕН') ? '#FF1744' : '#00E676',
-    reasonText:explicitReason || 'Штатная фиксация телеметрии',
+    reasonText: explicitReason || 'Штатная фиксация телеметрии',
   }
 }
 
@@ -199,7 +201,6 @@ const exportToCsv = () => {
     `"${item.reason.replace(/"/g, '""')}"`,
   ])
 
-  // \uFEFF обеспечивает корректное открытие кириллицы в Excel
   const csvString = '\uFEFF' + [csvHeaders.join(';'), ...csvRows.map((r) => r.join(';'))].join('\r\n')
   const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
@@ -225,16 +226,22 @@ onMounted(() => {
 
 <template>
   <div class="audit-view pa-6">
-    <div class="d-flex align-center justify-space-between mb-4">
-      <div>
-        <h1 class="text-h6 font-weight-black tracking-wider brand-title mb-1">
-          ЖУРНАЛ АУДИТА СИСТЕМЫ
-        </h1><p class="text-caption text-disabled font-mono">
-          НЕИЗМЕНЯЕМЫЙ ПРОТОКОЛ ОПЕРАЦИЙ (ЧЁРНЫЙ ЯЩИК СДМТ)
-        </p>
-      </div>
-
+    <!-- Шапка страницы -->
+    <div class="mb-4">
       <div class="d-flex align-center">
+        <v-icon icon="mdi-clipboard-text-clock-outline" color="#00E676" size="26" class="mr-2" />
+        <h1 class="text-h6 font-weight-black tracking-wider brand-title mb-0">
+          ЖУРНАЛ АУДИТА СИСТЕМЫ
+        </h1>
+      </div>
+      <p class="text-caption text-disabled font-mono mt-1 mb-0">
+        НЕИЗМЕНЯЕМЫЙ ПРОТОКОЛ ОПЕРАЦИЙ (ЧЁРНЫЙ ЯЩИК СДМТ)
+      </p>
+    </div>
+
+    <!-- Тулбар: Слева поиск + кнопка обновить, справа кнопка экспорта -->
+    <div class="d-flex align-center justify-space-between mb-3">
+      <div class="d-flex align-center" style="max-width: 440px; width: 100%;">
         <v-text-field
           v-model="search"
           prepend-inner-icon="mdi-magnify"
@@ -243,36 +250,45 @@ onMounted(() => {
           variant="outlined"
           color="#00E676"
           hide-details
-          class="font-mono search-input mr-3"
-          style="width: 280px;"
+          class="font-mono search-input mr-2"
+          autocomplete="off"
+          autocorrect="off"
+          spellcheck="false"
         />
 
-        <!-- Кнопка экспорта в CSV (видна только Admin) -->
-        <v-btn
-          v-if="isAdmin"
-          variant="outlined"
-          color="#00E676"
-          size="small"
-          rounded="0"
-          prepend-icon="mdi-file-delimited-outline"
-          class="font-mono mr-2 border-subtle"
-          @click="exportToCsv"
-        >
-          ЭКСПОРТ В CSV
-        </v-btn>
-
-        <v-btn
-          icon="mdi-refresh"
-          variant="outlined"
-          size="small"
-          rounded="0"
-          :loading="isLoading"
-          class="border-subtle"
-          @click="fetchAuditLogs"
-        />
+        <!-- Кнопка обновления рядом с поиском -->
+        <v-tooltip text="Обновить журнал аудита" location="top">
+          <template #activator="{ props }">
+            <v-btn
+              v-bind="props"
+              icon="mdi-refresh"
+              variant="outlined"
+              size="small"
+              rounded="0"
+              :loading="isLoading"
+              class="border-subtle"
+              @click="fetchAuditLogs"
+            />
+          </template>
+        </v-tooltip>
       </div>
+
+      <!-- Самая правая кнопка: Экспорт в CSV (только Admin) -->
+      <v-btn
+        v-if="isAdmin"
+        variant="outlined"
+        color="#00E676"
+        size="small"
+        rounded="0"
+        prepend-icon="mdi-file-delimited-outline"
+        class="font-mono border-subtle"
+        @click="exportToCsv"
+      >
+        ЭКСПОРТ В CSV
+      </v-btn>
     </div>
 
+    <!-- Таблица журнала аудита -->
     <v-card class="table-card" rounded="0">
       <v-data-table
         :headers="headers"
