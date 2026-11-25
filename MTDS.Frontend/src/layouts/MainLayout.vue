@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import apiClient from '../api'
 
 const router = useRouter()
 const drawer = ref<boolean>(true)
@@ -8,13 +9,66 @@ const devSnackbar = ref<boolean>(false)
 
 const userRole = ref<string>(localStorage.getItem('role') || 'Dispatcher')
 
-const dispatcher = ref({
-  name: 'Алексеев Д. В.',
-  role: userRole.value === 'Admin' ? 'Администратор системы' : 'Оперативный диспетчер',
-  badge: userRole.value,
-  initials: userRole.value === 'Admin' ? 'АД' : 'ОД',
+// Реальные данные текущего оператора
+const currentUser = ref({
+  name: '',
+  surName: '',
+  email: '',
+  role: userRole.value,
 })
 
+const isAdmin = computed(() => currentUser.value.role?.toLowerCase() === 'admin')
+
+// Короткое имя для компактной кнопки в шапке (например: "Лукинов Е.")
+const shortDisplayName = computed(() => {
+  const s = currentUser.value.surName.trim()
+  const n = currentUser.value.name.trim()
+  if (s && n) return `${s} ${n.charAt(0)}.`
+  if (s || n) return s || n
+  if (currentUser.value.email) return currentUser.value.email.split('@')[0]
+  return 'Оператор'
+})
+
+// Полное имя для выпадающего меню
+const fullDisplayName = computed(() => {
+  const full = `${currentUser.value.surName} ${currentUser.value.name}`.trim()
+  return full || shortDisplayName.value
+})
+
+// Инициалы для аватарки
+const userInitials = computed(() => {
+  const s = currentUser.value.surName.trim().charAt(0)
+  const n = currentUser.value.name.trim().charAt(0)
+  if (s && n) return `${s}${n}`.toUpperCase()
+  if (s || n) return (s || n).toUpperCase()
+  if (currentUser.value.email) return currentUser.value.email.slice(0, 2).toUpperCase()
+  return 'ОП'
+})
+
+// Локализованные названия ролей
+const roleShortLabel = computed(() => (isAdmin.value ? 'Администратор' : 'Диспетчер'))
+const roleFullLabel = computed(() => (isAdmin.value ? 'Администратор системы' : 'Оперативный диспетчер'))
+const roleAccentColor = computed(() => (isAdmin.value ? '#FF1744' : '#29B6F6'))
+
+// Загрузка реального профиля с бэкенда
+const fetchCurrentUser = async () => {
+  try {
+    const response = await apiClient.get('/profile')
+    const raw = response.data?.profile || response.data?.data || response.data || {}
+
+    const fetchedRole = String(raw.role || raw.Role || localStorage.getItem('role') || 'Dispatcher')
+    userRole.value = fetchedRole
+
+    currentUser.value = {
+      name: String(raw.name || raw.Name || ''),
+      surName: String(raw.surName || raw.SurName || ''),
+      email: String(raw.email || raw.Email || ''),
+      role: fetchedRole,
+    }
+  } catch (err) {
+    console.warn('[ОРБИТА-LAYOUT] Не удалось подгрузить профиль в шапку:', err)
+  }
+}
 
 const rawMenuItems = [
   { to: '/', title: 'Карта маршрутов', icon: 'mdi-map-marker-path', requiresAdmin: false },
@@ -24,7 +78,6 @@ const rawMenuItems = [
   { to: '/admin/staff', title: 'Персонал', icon: 'mdi-shield-account', requiresAdmin: true },
 ]
 
-// Фильтруем элементы меню на основе роли
 const visibleMenuItems = computed(() => {
   return rawMenuItems.filter((item) => !item.requiresAdmin || userRole.value === 'Admin')
 })
@@ -33,11 +86,24 @@ const showInDevNotice = () => {
   devSnackbar.value = true
 }
 
+const goToProfile = () => {
+  router.push('/profile')
+}
+
 const handleLogout = () => {
   localStorage.removeItem('token')
   localStorage.removeItem('role')
   router.push('/login')
 }
+
+onMounted(() => {
+  fetchCurrentUser()
+  window.addEventListener('profile-updated', fetchCurrentUser)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('profile-updated', fetchCurrentUser)
+})
 </script>
 
 <template>
@@ -56,7 +122,6 @@ const handleLogout = () => {
 
       <v-divider class="border-opacity-10 mb-2" />
 
-      <!-- Список маршрутов (Журнал аудита виден только Admin) -->
       <v-list density="compact" nav class="px-2">
         <v-list-item
           v-for="item in visibleMenuItems"
@@ -78,8 +143,13 @@ const handleLogout = () => {
 
       <template #append>
         <div class="px-3 py-2 system-health-box mx-2 mb-2 d-flex align-center justify-space-between">
-          <span class="text-caption text-disabled">ДОСТУП:</span>
-          <span class="text-caption font-weight-bold status-normal">{{ userRole.toUpperCase() }}</span>
+          <span class="text-caption text-disabled font-mono">ДОСТУП:</span>
+          <span
+            class="text-caption font-weight-bold font-mono"
+            :style="{ color: roleAccentColor, letterSpacing: '0.05em' }"
+          >
+            {{ roleShortLabel.toUpperCase() }}
+          </span>
         </div>
       </template>
     </v-navigation-drawer>
@@ -106,28 +176,50 @@ const handleLogout = () => {
 
       <v-divider vertical class="mx-2 my-2 border-opacity-10" />
 
-      <!-- Меню диспетчера -->
+      <!-- Реальный профиль оператора в углу -->
       <v-menu location="bottom end" transition="fade-transition">
         <template #activator="{ props }">
           <v-btn v-bind="props" variant="text" class="dispatcher-btn px-2" rounded="0">
-            <v-avatar size="28" color="#21262D" class="mr-2 avatar-border">
-              <span class="text-caption font-weight-bold">{{ dispatcher.initials }}</span>
+            <v-avatar
+              size="30"
+              color="#0E1116"
+              class="mr-2 header-avatar"
+              :style="{ borderColor: roleAccentColor }"
+            >
+              <span class="text-caption font-weight-black font-mono" :style="{ color: roleAccentColor }">
+                {{ userInitials }}
+              </span>
             </v-avatar>
-            <div class="text-left mr-1 d-none d-sm-flex flex-column">
-              <span class="text-caption font-weight-bold line-clamp-1">{{ dispatcher.name }}</span>
-              <span class="text-disabled" style="font-size: 10px;">{{ dispatcher.badge }}</span>
+            <div class="text-left mr-2 d-none d-sm-flex flex-column" style="line-height: 1.15;">
+              <span class="text-caption font-weight-bold text-grey-lighten-3 line-clamp-1">
+                {{ shortDisplayName }}
+              </span>
+              <span class="font-mono" style="font-size: 10px;" :style="{ color: roleAccentColor }">
+                {{ roleShortLabel }}
+              </span>
             </div>
             <v-icon icon="mdi-chevron-down" size="16" class="text-disabled" />
           </v-btn>
         </template>
 
-        <v-list-item density="compact" class="dispatcher-menu py-0 mt-1" min-width="180">
+        <v-list density="compact" class="dispatcher-menu py-0 mt-1" min-width="220">
           <v-list-item class="py-2">
-            <v-list-item-title class="text-body-2 font-weight-bold">{{ dispatcher.name }}</v-list-item-title>
-            <v-list-item-subtitle class="text-caption">{{ dispatcher.role }}</v-list-item-subtitle>
-          </v-list-item>
+            <v-list-item-title class="text-body-2 font-weight-bold text-white">
+              {{ fullDisplayName }}
+            </v-list-item-title>
+            <v-list-item-subtitle class="text-caption mt-1" :style="{ color: roleAccentColor, opacity: 0.9 }">
+              {{ roleFullLabel }}
+            </v-list-item-subtitle>
+            <v-list-item-subtitle v-if="currentUser.email" class="text-caption font-mono text-disabled mt-1" style="font-size: 10px !important;">
+              {{ currentUser.email }}
+            </v-list-item-subtitle></v-list-item>
           <v-divider class="border-opacity-10" />
-          <v-list-item prepend-icon="mdi-account-circle-outline" title="Профиль" rounded="0" @click="showInDevNotice" />
+          <v-list-item
+            prepend-icon="mdi-account-circle-outline"
+            title="Профиль"
+            rounded="0"
+            @click="goToProfile"
+          />
           <v-divider class="border-opacity-10" />
           <v-list-item
             prepend-icon="mdi-logout-variant"
@@ -136,7 +228,7 @@ const handleLogout = () => {
             class="text-red-lighten-1"
             @click="handleLogout"
           />
-        </v-list-item>
+        </v-list>
       </v-menu>
     </v-app-bar>
 
@@ -179,11 +271,13 @@ const handleLogout = () => {
   border-left: 2px solid #00E676 !important;
   color: #00E676 !important;
 }
-.avatar-border {
-  border: 1px solid #30363D;
+.header-avatar {
+  border: 1.5px solid #30363D;
 }
 .dispatcher-btn {
-  height: 38px !important;
+  height: 40px !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
 }
 .dispatcher-menu {
   background-color: #161B22 !important;
@@ -195,10 +289,6 @@ const handleLogout = () => {
   background-color: #00E676;
   border-radius: 50%;
   box-shadow: 0 0 8px #00E676;
-}
-.status-normal {
-  color: #00E676;
-  letter-spacing: 0.05em;
 }
 .system-health-box {
   background-color: #0E1116;
